@@ -1,21 +1,14 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
+import { COMPANY_HOME, SUPPLIER_HOME, canViewAudit, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
 import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
+import AuditPage from './pages/AuditPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
-
-const COMPANY_HOME = '/';
-const SUPPLIER_HOME = '/supplier';
-
-// المورد مكانه بوابته، وغيره مكانه لوحة الشركة.
-// توجيه في الواجهة فقط — الخادم يحمي كل مسار بنفسه، فلا رسالة صلاحيات هنا.
-function homeFor(user) {
-  return user?.role === 'supplier_admin' ? SUPPLIER_HOME : COMPANY_HOME;
-}
 
 export default function App() {
   const { check } = useSession();
@@ -59,6 +52,16 @@ export default function App() {
         }
       />
       <Route
+        path="/audit"
+        element={
+          <RequireSession home={COMPANY_HOME}>
+            <AuditOnly>
+              <AuditPage />
+            </AuditOnly>
+          </RequireSession>
+        }
+      />
+      <Route
         path="/supplier"
         element={
           <RequireSession home={SUPPLIER_HOME}>
@@ -77,6 +80,12 @@ function RequireSession({ home, children }) {
   if (!session) return <Navigate to="/login" replace />;
   const userHome = homeFor(session.user);
   return userHome === home ? children : <Navigate to={userHome} replace />;
+}
+
+/** سجل التدقيق لأربعة أدوار؛ غيرهم يُعاد إلى / بلا رسالة — الخادم يرد 403 أصلاً. */
+function AuditOnly({ children }) {
+  const { session } = useSession();
+  return canViewAudit(session.user) ? children : <Navigate to={COMPANY_HOME} replace />;
 }
 
 function GuestOnly({ children }) {

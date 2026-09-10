@@ -29,6 +29,39 @@ export const offerStatusLabels = {
   withdrawn: 'مسحوب'
 };
 
+// رموز action التي يكتبها الخادم في audit_log. رمز خارج القاموس يُعرض كما هو — لا ترجمة بالتخمين.
+export const auditActionLabels = {
+  'company.registered': 'تسجيل شركة',
+  'company.active': 'توثيق شركة',
+  'company.suspended': 'إيقاف شركة',
+  'supplier.registered': 'تسجيل مورد',
+  'supplier.verified': 'توثيق مورد',
+  'supplier.rejected': 'رفض توثيق مورد',
+  'supplier.suspended': 'إيقاف مورد',
+  'user.created': 'إنشاء مستخدم',
+  'user.login': 'تسجيل دخول',
+  'user.suspended': 'إيقاف مستخدم',
+  'limits.set': 'ضبط سقوف مشترٍ',
+  'request.created': 'إنشاء طلب',
+  'request.offer_selected': 'اختيار عرض',
+  'request.approved': 'اعتماد طلب',
+  'request.rejected': 'رفض طلب',
+  'request.policy_blocked': 'منعته السياسة',
+  'offer.submitted': 'تقديم عرض',
+  'offer.withdrawn': 'سحب عرض',
+  'purchase_order.issued': 'إصدار أمر شراء'
+};
+
+export const entityTypeLabels = {
+  company: 'شركة',
+  supplier: 'مورد',
+  user: 'مستخدم',
+  request: 'طلب',
+  offer: 'عرض',
+  purchase_order: 'أمر شراء',
+  buyer_limits: 'سقوف'
+};
+
 // قيمة غير معروفة تُعرض كما هي بدل أن تتعطل الشاشة.
 function labelFrom(labels, value) {
   return Object.hasOwn(labels, value) ? labels[value] : String(value ?? '');
@@ -47,6 +80,16 @@ export function statusLabel(status) {
 /** حالة العرض بالعربية. */
 export function offerStatusLabel(status) {
   return labelFrom(offerStatusLabels, status);
+}
+
+/** حدث التدقيق بالعربية، والرمز الإنجليزي كما هو إن لم يكن في القاموس. */
+export function auditActionLabel(action) {
+  return labelFrom(auditActionLabels, action);
+}
+
+/** نوع الكيان بالعربية. */
+export function entityTypeLabel(type) {
+  return labelFrom(entityTypeLabels, type);
 }
 
 // أرقام لاتينية بفواصل الآلاف وحتى منزلتين عشريتين.
@@ -71,13 +114,26 @@ export function formatRating(value) {
   return Number.isFinite(number) ? latinNumber.format(number) : '—';
 }
 
+const pad = (n) => String(n).padStart(2, '0');
+
+function toDate(iso) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /** التاريخ بصيغة 2026-09-10 بتوقيت المتصفح. */
 export function formatDate(iso) {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const pad = (n) => String(n).padStart(2, '0');
+  const date = toDate(iso);
+  if (!date) return '—';
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** التاريخ والوقت بصيغة 2026-09-11 22:47 بتوقيت المتصفح ونظام 24 ساعة. */
+export function formatDateTime(iso) {
+  const date = toDate(iso);
+  if (!date) return '—';
+  return `${formatDate(iso)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // المعدود في العربية يتبع العدد: شهر واحد · شهران · 3 أشهر · 12 شهراً · 100 شهر.
