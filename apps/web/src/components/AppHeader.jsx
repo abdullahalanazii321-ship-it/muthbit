@@ -1,18 +1,23 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useSession } from '../lib/session.js';
-import { canViewAudit, homeFor } from '../lib/access.js';
+import { canViewAudit, canViewTeam, homeFor } from '../lib/access.js';
 import { roleLabel } from '../lib/labels.js';
 import Button from './Button.jsx';
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal';
 
+const navLinkClass = ({ isActive }) =>
+  `rounded-sm text-sm font-medium ${focusRing} ${isActive ? 'text-ink underline underline-offset-4' : 'text-muted hover:text-ink'}`;
+
 /**
  * شريط أعلى كل شاشة داخلية: اسم المنصة رابطاً إلى الصفحة الرئيسية لدور المستخدم،
- * ورابط سجل التدقيق للأدوار المسموح لها وحدها، واسم المستخدم ودوره بالعربية، وتسجيل الخروج.
+ * وروابط «الفريق» و«سجل التدقيق» للأدوار المسموح لها وحدها، واسم المستخدم ودوره بالعربية، وتسجيل الخروج.
  */
 export default function AppHeader() {
   const { session, signOut } = useSession();
   const { fullName, role } = session.user;
+  const showTeam = canViewTeam(session.user);
+  const showAudit = canViewAudit(session.user);
 
   return (
     <header className="border-b border-line bg-surface">
@@ -21,18 +26,18 @@ export default function AppHeader() {
           <Link to={homeFor(session.user)} className={`rounded-sm font-display text-lg font-semibold text-ink ${focusRing}`}>
             منصة مثبت
           </Link>
-          {canViewAudit(session.user) && (
-            <nav aria-label="التنقل الرئيسي">
-              <NavLink
-                to="/audit"
-                className={({ isActive }) =>
-                  `rounded-sm text-sm font-medium ${focusRing} ${
-                    isActive ? 'text-ink underline underline-offset-4' : 'text-muted hover:text-ink'
-                  }`
-                }
-              >
-                سجل التدقيق
-              </NavLink>
+          {(showTeam || showAudit) && (
+            <nav aria-label="التنقل الرئيسي" className="flex flex-wrap items-center gap-5">
+              {showTeam && (
+                <NavLink to="/team" className={navLinkClass}>
+                  الفريق
+                </NavLink>
+              )}
+              {showAudit && (
+                <NavLink to="/audit" className={navLinkClass}>
+                  سجل التدقيق
+                </NavLink>
+              )}
             </nav>
           )}
         </div>

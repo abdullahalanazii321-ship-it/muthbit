@@ -29,6 +29,13 @@ export const offerStatusLabels = {
   withdrawn: 'مسحوب'
 };
 
+// حالة حساب المستخدم.
+export const userStatusLabels = {
+  active: 'نشط',
+  pending: 'بانتظار التفعيل',
+  suspended: 'موقوف'
+};
+
 // رموز action التي يكتبها الخادم في audit_log. رمز خارج القاموس يُعرض كما هو — لا ترجمة بالتخمين.
 export const auditActionLabels = {
   'company.registered': 'تسجيل شركة',
@@ -82,6 +89,11 @@ export function statusLabel(status) {
 /** حالة العرض بالعربية. */
 export function offerStatusLabel(status) {
   return labelFrom(offerStatusLabels, status);
+}
+
+/** حالة حساب المستخدم بالعربية. */
+export function userStatusLabel(status) {
+  return labelFrom(userStatusLabels, status);
 }
 
 /** حدث التدقيق بالعربية، والرمز الإنجليزي كما هو إن لم يكن في القاموس. */

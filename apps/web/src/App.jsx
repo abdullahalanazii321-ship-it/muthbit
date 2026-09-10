@@ -1,12 +1,13 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
-import { COMPANY_HOME, SUPPLIER_HOME, canViewAudit, homeFor } from './lib/access.js';
+import { COMPANY_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
 import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import TeamPage from './pages/TeamPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
 
@@ -55,9 +56,19 @@ export default function App() {
         path="/audit"
         element={
           <RequireSession home={COMPANY_HOME}>
-            <AuditOnly>
+            <AllowedOnly allowed={canViewAudit}>
               <AuditPage />
-            </AuditOnly>
+            </AllowedOnly>
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/team"
+        element={
+          <RequireSession home={COMPANY_HOME}>
+            <AllowedOnly allowed={canViewTeam}>
+              <TeamPage />
+            </AllowedOnly>
           </RequireSession>
         }
       />
@@ -82,10 +93,10 @@ function RequireSession({ home, children }) {
   return userHome === home ? children : <Navigate to={userHome} replace />;
 }
 
-/** سجل التدقيق لأربعة أدوار؛ غيرهم يُعاد إلى / بلا رسالة — الخادم يرد 403 أصلاً. */
-function AuditOnly({ children }) {
+/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى / بلا رسالة — الخادم يرد 403 أصلاً. */
+function AllowedOnly({ allowed, children }) {
   const { session } = useSession();
-  return canViewAudit(session.user) ? children : <Navigate to={COMPANY_HOME} replace />;
+  return allowed(session.user) ? children : <Navigate to={COMPANY_HOME} replace />;
 }
 
 function GuestOnly({ children }) {
