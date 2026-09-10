@@ -49,7 +49,8 @@ export function offerStatusLabel(status) {
   return labelFrom(offerStatusLabels, status);
 }
 
-const sarFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+// أرقام لاتينية بفواصل الآلاف وحتى منزلتين عشريتين.
+const latinNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 /**
  * المبلغ بصيغة 1,250,000 ر.س بأرقام لاتينية.
@@ -60,7 +61,14 @@ export function formatSAR(value) {
   if (value === null || value === undefined || value === '') return '—';
   const number = Number(value);
   if (!Number.isFinite(number)) return '—';
-  return `${sarFormatter.format(number)} ر.س`;
+  return `${latinNumber.format(number)} ر.س`;
+}
+
+/** تقييم المورد بصيغة 4.7 — يصل من الخادم نصاً ("4.70"). */
+export function formatRating(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  return Number.isFinite(number) ? latinNumber.format(number) : '—';
 }
 
 /** التاريخ بصيغة 2026-09-10 بتوقيت المتصفح. */
@@ -95,4 +103,9 @@ export function formatMonths(value) {
 /** مدة التسليم بصيغة «7 أيام». */
 export function formatDays(value) {
   return formatCount(value, { one: 'يوم واحد', two: 'يومان', few: 'أيام', many: 'يوماً', other: 'يوم' });
+}
+
+/** عدد العروض بصيغة «عرض واحد» · «عرضان» · «3 عروض» · «11 عرضاً». */
+export function formatOfferCount(value) {
+  return formatCount(value, { one: 'عرض واحد', two: 'عرضان', few: 'عروض', many: 'عرضاً', other: 'عرض' });
 }

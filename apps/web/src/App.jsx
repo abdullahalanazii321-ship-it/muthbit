@@ -3,6 +3,7 @@ import { useSession } from './lib/session.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
+import RequestDetailPage from './pages/RequestDetailPage.jsx';
 import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
@@ -46,6 +47,14 @@ export default function App() {
         element={
           <RequireSession home={COMPANY_HOME}>
             <NewRequestPage />
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/requests/:id"
+        element={
+          <RequireSession home={COMPANY_HOME}>
+            <RequestDetailPage />
           </RequireSession>
         }
       />

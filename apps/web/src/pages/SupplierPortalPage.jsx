@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { formatDate, formatDays, formatMonths, formatSAR, offerStatusLabel } from '../lib/labels.js';
+import { useResource } from '../lib/useResource.js';
 import AppHeader from '../components/AppHeader.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
+import Detail from '../components/Detail.jsx';
 import OfferForm, { INCOMPLETE_OFFER_HINT } from '../components/OfferForm.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
@@ -39,8 +41,8 @@ export default function SupplierPortalPage() {
   const activeTab = searchParams.get('tab') === OFFERS_TAB ? OFFERS_TAB : OPEN_TAB;
 
   // القائمتان تُحمَّلان معاً: تقديم عرض أو سحبه من أي لسان يغيّر الاثنتين.
-  const openRequests = useList('/api/offers/open-requests', isOpenRequestsResponse);
-  const myOffers = useList('/api/offers/mine', isMyOffersResponse);
+  const openRequests = useResource('/api/offers/open-requests', isOpenRequestsResponse);
+  const myOffers = useResource('/api/offers/mine', isMyOffersResponse);
 
   // رسائل الخادم بعد التقديم أو السحب. تُحفظ هنا لا في البطاقة حتى تبقى بعد إعادة التحميل.
   const [cardNotices, setCardNotices] = useState({});
@@ -104,46 +106,6 @@ export default function SupplierPortalPage() {
       </main>
     </div>
   );
-}
-
-/**
- * قائمة من الخادم بحالاتها: تحميل · خطأ · جاهزة.
- * إعادة التحميل بعد عمل ناجح هادئة: تبقى البيانات الحالية معروضة حتى يصل الرد،
- * فلا تختفي رسالة الخادم ولا تقفز البطاقات إلى الهيكل.
- */
-function useList(path, isValid) {
-  const [state, setState] = useState({ status: 'loading', data: null, error: null, refreshing: false });
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    let ignore = false;
-    setState((current) =>
-      current.status === 'ready'
-        ? { ...current, refreshing: true }
-        : { status: 'loading', data: null, error: null, refreshing: false }
-    );
-    apiFetch(path)
-      .then((data) => {
-        if (!isValid(data)) throw new Error('unexpected response shape');
-        if (!ignore) setState({ status: 'ready', data, error: null, refreshing: false });
-      })
-      .catch((error) => {
-        // 401: api.js أنهى الجلسة وحوّل إلى /login.
-        if (ignore || error?.status === 401) return;
-        setState({
-          status: 'error',
-          data: null,
-          error: { code: error?.code ?? null, message: errorMessage(error) },
-          refreshing: false
-        });
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [path, isValid, version]);
-
-  const reload = useCallback(() => setVersion((current) => current + 1), []);
-  return { ...state, reload };
 }
 
 function Tabs({ active, onChange }) {
@@ -265,15 +227,6 @@ function OpenRequestCard({ request, notice, onDismissNotice, onSubmitted, onWith
         )}
       </div>
     </article>
-  );
-}
-
-function Detail({ label, children }) {
-  return (
-    <div>
-      <dt className="text-muted">{label}</dt>
-      <dd className="mt-0.5 text-ink">{children}</dd>
-    </div>
   );
 }
 

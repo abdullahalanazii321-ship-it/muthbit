@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
+import { blockedReasons, reasonMessages } from '../lib/policy.js';
 import AppHeader from '../components/AppHeader.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
-
-// رمز «مطابق للسياسة وضمن السقف» في apps/api/src/services/policy.js — ما عداه يُعرض تنبيهاً.
-const WITHIN_POLICY = 'within_policy';
-
-function reasonMessages(reasons) {
-  return Array.isArray(reasons) ? reasons.map((reason) => reason?.message).filter(Boolean) : [];
-}
 
 /** نموذج إنشاء طلب شراء. الخادم وحده يقرر السياسة؛ الشاشة تعرض قراره. */
 export default function NewRequestPage() {
@@ -43,9 +37,7 @@ export default function NewRequestPage() {
     setError(null);
     try {
       const data = await apiFetch('/api/requests', { method: 'POST', body });
-      const warnings = reasonMessages(
-        (data?.policy?.reasons ?? []).filter((reason) => reason?.code !== WITHIN_POLICY)
-      );
+      const warnings = reasonMessages(data?.policy?.reasons);
       navigate('/', {
         replace: true,
         state: { created: { reference: data?.request?.reference ?? null, warnings } }
@@ -56,7 +48,7 @@ export default function NewRequestPage() {
       // policy_blocked ليس عطلاً: رسالة الخادم ثم أسبابه. أما details في 400 فمخرجات تحقق بالإنجليزية فلا تُعرض.
       setError({
         message: errorMessage(err),
-        reasons: err?.code === 'policy_blocked' ? reasonMessages(err.details?.reasons) : []
+        reasons: blockedReasons(err)
       });
       setSubmitting(false);
     }

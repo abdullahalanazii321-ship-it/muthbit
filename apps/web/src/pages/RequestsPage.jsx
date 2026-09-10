@@ -158,7 +158,7 @@ function EmptyState({ filtered, onShowAll }) {
   );
 }
 
-/** الجدول داخل حاوية تنزلق أفقياً وحدها على الشاشات الضيقة. الصفوف غير قابلة للنقر عمداً: شاشة التفاصيل لم تُبنَ بعد. */
+/** الجدول داخل حاوية تنزلق أفقياً وحدها على الشاشات الضيقة. كل صف رابط حقيقي إلى تفاصيل الطلب. */
 function RequestsTable({ loading = false, requests = [] }) {
   const cell = 'whitespace-nowrap px-4 py-3';
   return (
@@ -186,9 +186,16 @@ function RequestsTable({ loading = false, requests = [] }) {
                 </tr>
               ))
             : requests.map((request) => (
-                <tr key={request.id} className="border-t border-line">
+                <tr key={request.id} className="relative border-t border-line hover:bg-surface-2 focus-within:bg-surface-2">
                   <td className={`${cell} font-mono`}>
-                    <bdi>{request.reference}</bdi>
+                    {/* الرابط على المرجع يمتد فوق الصف كله (after:inset-0): النقر في أي خلية يفتح التفاصيل،
+                        والزر الأوسط و«فتح في تبويب جديد» يعملان لأنه رابط حقيقي لا onClick. */}
+                    <Link
+                      to={`/requests/${request.id}`}
+                      className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-seal"
+                    >
+                      <bdi>{request.reference}</bdi>
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-ink">{request.item}</td>
                   <td className={`${cell} tabular-nums`}>{request.quantity}</td>

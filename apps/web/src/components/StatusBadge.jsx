@@ -9,12 +9,17 @@ const toneClasses = {
   muted: 'border-line-strong bg-surface-2 text-muted'
 };
 
-export default function StatusBadge({ status }) {
-  const tone = Object.hasOwn(statusTones, status) ? statusTones[status] : 'muted';
+/** وسم صغير بإحدى النغمات الثلاث — للوسوم التي ليست حالة طلب (مثل «العرض المختار»). */
+export function Badge({ tone = 'muted', children }) {
   const classes = toneClasses[tone] ?? toneClasses.muted;
   return (
     <span className={`inline-flex items-center whitespace-nowrap rounded-sm border px-2 py-0.5 text-xs font-medium ${classes}`}>
-      {statusLabel(status)}
+      {children}
     </span>
   );
+}
+
+export default function StatusBadge({ status }) {
+  const tone = Object.hasOwn(statusTones, status) ? statusTones[status] : 'muted';
+  return <Badge tone={tone}>{statusLabel(status)}</Badge>;
 }

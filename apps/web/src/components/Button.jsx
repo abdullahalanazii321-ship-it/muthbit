@@ -1,7 +1,9 @@
 // [&:not(:disabled)]:hover بدل enabled:hover لأن الزر قد يكون رابطاً، والرابط لا يطابق :enabled.
 const variants = {
   primary: 'border-seal bg-seal text-surface [&:not(:disabled)]:hover:opacity-90',
-  secondary: 'border-line-strong bg-surface text-ink [&:not(:disabled)]:hover:bg-surface-2'
+  secondary: 'border-line-strong bg-surface text-ink [&:not(:disabled)]:hover:bg-surface-2',
+  // للإجراء الذي يرفض — لون الإشارة لا لون الختم.
+  signal: 'border-signal bg-signal text-surface [&:not(:disabled)]:hover:opacity-90'
 };
 
 /**
