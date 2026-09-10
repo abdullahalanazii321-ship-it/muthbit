@@ -22,6 +22,13 @@ export const statusLabels = {
   cancelled: 'ملغى'
 };
 
+// حالة العرض لا حالة الطلب: للعرض حالته، ولطلبه حالة أخرى من الحالات التسع.
+export const offerStatusLabels = {
+  submitted: 'مُقدَّم',
+  selected: 'مختار',
+  withdrawn: 'مسحوب'
+};
+
 // قيمة غير معروفة تُعرض كما هي بدل أن تتعطل الشاشة.
 function labelFrom(labels, value) {
   return Object.hasOwn(labels, value) ? labels[value] : String(value ?? '');
@@ -35,6 +42,11 @@ export function roleLabel(role) {
 /** الحالة بالعربية. */
 export function statusLabel(status) {
   return labelFrom(statusLabels, status);
+}
+
+/** حالة العرض بالعربية. */
+export function offerStatusLabel(status) {
+  return labelFrom(offerStatusLabels, status);
 }
 
 const sarFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -58,4 +70,29 @@ export function formatDate(iso) {
   if (Number.isNaN(date.getTime())) return '—';
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// المعدود في العربية يتبع العدد: شهر واحد · شهران · 3 أشهر · 12 شهراً · 100 شهر.
+// Intl.PluralRules في المتصفح يعرف هذه الفئات، فلا حاجة لحزمة.
+const arabicPlural = new Intl.PluralRules('ar');
+
+function formatCount(value, forms) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  // الصفر «—» لا «0 شهر»: ضمان صفر أو مدة صفر يعني عرضاً ناقصاً.
+  if (!Number.isInteger(number) || number <= 0) return '—';
+  const form = arabicPlural.select(number);
+  if (form === 'one') return forms.one;
+  if (form === 'two') return forms.two;
+  return `${number} ${forms[form] ?? forms.other}`;
+}
+
+/** مدة الضمان بصيغة «12 شهراً». */
+export function formatMonths(value) {
+  return formatCount(value, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً', other: 'شهر' });
+}
+
+/** مدة التسليم بصيغة «7 أيام». */
+export function formatDays(value) {
+  return formatCount(value, { one: 'يوم واحد', two: 'يومان', few: 'أيام', many: 'يوماً', other: 'يوم' });
 }

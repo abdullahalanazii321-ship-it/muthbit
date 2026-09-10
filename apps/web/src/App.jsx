@@ -3,8 +3,18 @@ import { useSession } from './lib/session.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
+import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
+
+const COMPANY_HOME = '/';
+const SUPPLIER_HOME = '/supplier';
+
+// المورد مكانه بوابته، وغيره مكانه لوحة الشركة.
+// توجيه في الواجهة فقط — الخادم يحمي كل مسار بنفسه، فلا رسالة صلاحيات هنا.
+function homeFor(user) {
+  return user?.role === 'supplier_admin' ? SUPPLIER_HOME : COMPANY_HOME;
+}
 
 export default function App() {
   const { check } = useSession();
@@ -26,7 +36,7 @@ export default function App() {
       <Route
         path="/"
         element={
-          <RequireSession>
+          <RequireSession home={COMPANY_HOME}>
             <RequestsPage />
           </RequireSession>
         }
@@ -34,8 +44,16 @@ export default function App() {
       <Route
         path="/requests/new"
         element={
-          <RequireSession>
+          <RequireSession home={COMPANY_HOME}>
             <NewRequestPage />
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/supplier"
+        element={
+          <RequireSession home={SUPPLIER_HOME}>
+            <SupplierPortalPage />
           </RequireSession>
         }
       />
@@ -44,14 +62,17 @@ export default function App() {
   );
 }
 
-function RequireSession({ children }) {
+/** home: لمن هذا المسار. من كان مكانه غيره يُعاد إلى مكانه. */
+function RequireSession({ home, children }) {
   const { session } = useSession();
-  return session ? children : <Navigate to="/login" replace />;
+  if (!session) return <Navigate to="/login" replace />;
+  const userHome = homeFor(session.user);
+  return userHome === home ? children : <Navigate to={userHome} replace />;
 }
 
 function GuestOnly({ children }) {
   const { session } = useSession();
-  return session ? <Navigate to="/" replace /> : children;
+  return session ? <Navigate to={homeFor(session.user)} replace /> : children;
 }
 
 function SessionChecking() {
