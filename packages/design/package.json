@@ -1,0 +1,12 @@
+{
+  "name": "@muthbit/design",
+  "version": "0.1.0",
+  "private": true,
+  "description": "هوية مثبت — التوكنز وإعداد Tailwind المشترك",
+  "main": "tokens.js",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./tokens.js": "./tokens.js",
+    "./tailwind.preset.cjs": "./tailwind.preset.cjs"
+  }
+}

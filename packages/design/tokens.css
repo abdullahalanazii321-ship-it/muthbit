@@ -1,0 +1,94 @@
+/* =========================================================
+   هوية مثبت — طبقة التوكنز
+   المصدر الوحيد للألوان والخطوط والمسافات في كل واجهات المنصة.
+   لا يُكتب لون مباشرة في أي مكوّن؛ كل لون يُقرأ من هنا.
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  /* --- الأرضيات والحبر --- */
+  --mb-ground: #EDEFEC;        /* أرضية الصفحة — رمادي بميل أخضر خفيف، لا رمادي محايد */
+  --mb-surface: #FFFFFF;       /* البطاقات والجداول */
+  --mb-surface-2: #E4E8E4;     /* رؤوس الجداول والمناطق الثانوية */
+  --mb-ink: #10201D;           /* النص الأساسي */
+  --mb-muted: #5C6B66;         /* النص الثانوي */
+  --mb-line: #D2D9D4;          /* الحدود */
+  --mb-line-strong: #B7C2BC;   /* حدود الحقول والأزرار */
+
+  /* --- لون الختم: التوثيق والاعتماد --- */
+  --mb-seal: #0B5F52;
+  --mb-seal-soft: #DDE9E4;
+
+  /* --- لون الإشارة: التجاوز والنقص والرفض (دلالي، ليس لون هوية) --- */
+  --mb-signal: #B2551B;
+  --mb-signal-soft: #F0E3D8;
+
+  /* --- الخطوط --- */
+  --mb-font-display: 'Noto Kufi Arabic', 'Archivo', system-ui, sans-serif;
+  --mb-font-body: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;
+  --mb-font-mono: 'IBM Plex Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
+
+  /* --- المقاسات --- */
+  --mb-radius-sm: 4px;
+  --mb-radius: 6px;
+  --mb-measure: 66ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --mb-ground: #0B1210;
+    --mb-surface: #121C19;
+    --mb-surface-2: #182421;
+    --mb-ink: #E7EDE9;
+    --mb-muted: #94A39D;
+    --mb-line: #22302B;
+    --mb-line-strong: #33443E;
+    --mb-seal: #54C3A8;
+    --mb-seal-soft: #16302A;
+    --mb-signal: #E19257;
+    --mb-signal-soft: #2C2118;
+  }
+}
+
+:root[data-theme='dark'] {
+  --mb-ground: #0B1210;
+  --mb-surface: #121C19;
+  --mb-surface-2: #182421;
+  --mb-ink: #E7EDE9;
+  --mb-muted: #94A39D;
+  --mb-line: #22302B;
+  --mb-line-strong: #33443E;
+  --mb-seal: #54C3A8;
+  --mb-seal-soft: #16302A;
+  --mb-signal: #E19257;
+  --mb-signal-soft: #2C2118;
+}
+
+html[dir='rtl'] body {
+  font-family: var(--mb-font-body);
+}
+
+body {
+  background: var(--mb-ground);
+  color: var(--mb-ink);
+  font-family: var(--mb-font-body);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* العربية لا تأخذ تباعد حروف: يكسر اتصال الحرف. */
+[dir='rtl'] .mb-label {
+  letter-spacing: 0;
+  font-family: var(--mb-font-body);
+}
+[dir='ltr'] .mb-label {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: var(--mb-font-mono);
+}
+
+.mb-num {
+  font-family: var(--mb-font-mono);
+  font-variant-numeric: tabular-nums;
+}
