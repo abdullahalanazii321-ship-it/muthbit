@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ليس تكراراً لما في tokens.css: preflight داخل @tailwind base يأتي بعده
+ * ويدهس ما ضبطه على body، فنعيد الضبط هنا من التوكنز. لا تحذفه.
+ */
+@layer base {
+  body {
+    @apply bg-ground text-ink font-body;
+  }
+}
