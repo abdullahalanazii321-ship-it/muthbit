@@ -8,6 +8,6 @@
  */
 @layer base {
   body {
-    @apply bg-ground text-ink font-body;
+    @apply bg-ground text-ink font-body leading-body;
   }
 }

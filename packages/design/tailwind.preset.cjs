@@ -30,6 +30,7 @@ module.exports = {
         body: ['IBM Plex Sans Arabic', 'Segoe UI', 'system-ui', 'sans-serif'],
         mono: ['IBM Plex Mono', 'IBM Plex Sans Arabic', 'ui-monospace', 'monospace']
       },
+      lineHeight: { body: 'var(--mb-leading-body)' },
       borderRadius: { DEFAULT: '6px', sm: '4px' },
       maxWidth: { measure: '66ch' }
     }

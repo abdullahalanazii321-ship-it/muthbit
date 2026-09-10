@@ -28,6 +28,7 @@
   --mb-font-display: 'Noto Kufi Arabic', 'Archivo', system-ui, sans-serif;
   --mb-font-body: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;
   --mb-font-mono: 'IBM Plex Mono', 'IBM Plex Sans Arabic', ui-monospace, monospace;
+  --mb-leading-body: 1.7;      /* تباعد أسطر النص — العربية تحتاج مساحة للتشكيل والنقاط */
 
   /* --- المقاسات --- */
   --mb-radius-sm: 4px;
@@ -73,7 +74,7 @@ body {
   background: var(--mb-ground);
   color: var(--mb-ink);
   font-family: var(--mb-font-body);
-  line-height: 1.7;
+  line-height: var(--mb-leading-body);
   margin: 0;
 }
 
