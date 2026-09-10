@@ -1,9 +1,10 @@
 'use strict';
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { z } = require('zod');
 const env = require('../config/env');
 const db = require('../db/knex');
-const { unauthorized, forbidden } = require('../utils/errors');
+const { unauthorized, forbidden, badRequest, notFound } = require('../utils/errors');
 
 const COMPANY_ROLES = ['company_owner', 'finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
 const SUPPLIER_ROLES = ['supplier_admin'];
@@ -110,8 +111,13 @@ function requireRole(...allowed) {
  * كل استعلام يمر من هنا يخرج مقيّداً بالشركة أو بالمورد.
  * لا يُستثنى إلا مدير المنصة صراحةً — وأي دور غير معروف يُرفض بدل أن يمر.
  */
-function scopeToCompany(query, user, column = 'company_id') {
-  if (user.role === 'platform_admin') return query;
+function scopeToCompany(query, user, column = 'company_id', platformCompanyId = null) {
+  // مسؤول المنصة لا يقرأ كل الشركات دفعة واحدة: يمرّر المسار الشركة التي سمّاها صراحةً
+  // (resolvePlatformCompany)، وإلا رُفض. وتقييد اطلاعه في سجل تلك الشركة على المسار (audit.recordPlatformView).
+  if (user.role === 'platform_admin') {
+    if (!platformCompanyId) throw forbidden();
+    return query.where(column, platformCompanyId);
+  }
   if (COMPANY_ROLES.includes(user.role)) {
     if (!user.companyId) throw forbidden();
     return query.where(column, user.companyId);
@@ -143,6 +149,19 @@ function assertOwnership(row, user, { companyColumn = 'company_id', supplierColu
   throw forbidden();
 }
 
+const companyIdSchema = z.string().uuid();
+
+/**
+ * الشركة التي يطّلع عليها مسؤول المنصة: يجب أن يسمّيها بمعرّف صالح لشركة موجودة.
+ * أي غموض يُرفض — لا قراءة لكل الشركات دفعة واحدة، ولا قيد اطلاع في سجل شركة لا وجود لها.
+ */
+async function resolvePlatformCompany(companyId, missingMessageAr) {
+  if (!companyIdSchema.safeParse(companyId).success) throw badRequest(missingMessageAr);
+  const company = await db('companies').select('id').where({ id: companyId }).first();
+  if (!company) throw notFound('الشركة غير موجودة.');
+  return company.id;
+}
+
 module.exports = {
   COMPANY_ROLES,
   SUPPLIER_ROLES,
@@ -151,5 +170,6 @@ module.exports = {
   requireRole,
   scopeToCompany,
   scopeToSupplier,
-  assertOwnership
+  assertOwnership,
+  resolvePlatformCompany
 };

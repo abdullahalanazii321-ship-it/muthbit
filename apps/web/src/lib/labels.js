@@ -58,7 +58,11 @@ export const auditActionLabels = {
   'request.policy_blocked': 'منعته السياسة',
   'offer.submitted': 'تقديم عرض',
   'offer.withdrawn': 'سحب عرض',
-  'purchase_order.issued': 'إصدار أمر شراء'
+  'purchase_order.issued': 'إصدار أمر شراء',
+  'platform.viewed_requests': 'اطّلاع المنصة على الطلبات',
+  'platform.viewed_request': 'اطّلاع المنصة على طلب',
+  'platform.viewed_audit': 'اطّلاع المنصة على السجل',
+  'platform.viewed_users': 'اطّلاع المنصة على المستخدمين'
 };
 
 export const entityTypeLabels = {

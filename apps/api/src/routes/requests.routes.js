@@ -5,7 +5,7 @@ const db = require('../db/knex');
 const audit = require('../utils/audit');
 const policy = require('../services/policy');
 const { nextReference } = require('../utils/reference');
-const { requireAuth, requireRole, scopeToCompany, assertOwnership } = require('../middleware/auth');
+const { requireAuth, requireRole, scopeToCompany, assertOwnership, resolvePlatformCompany } = require('../middleware/auth');
 const { badRequest, notFound, forbidden, conflict, policyBlocked } = require('../utils/errors');
 
 const router = express.Router();
@@ -94,11 +94,16 @@ router.post('/', requireRole(BUYER_ROLES), async (req, res, next) => {
 /** قائمة الطلبات — مقيّدة بنطاق الشركة دائماً. */
 router.get('/', async (req, res, next) => {
   try {
+    // مسؤول المنصة يسمّي الشركة صراحةً (?company_id=)؛ ولغيره يُتجاهل المعامل ويبقى النطاق من الجلسة.
+    const platformCompanyId = req.user.role === 'platform_admin'
+      ? await resolvePlatformCompany(req.query.company_id, 'مسؤول المنصة يقرأ طلبات شركة محددة — حدّد الشركة.')
+      : null;
+
     let query = db('requests').select(
       'id', 'reference', 'item', 'quantity', 'amount', 'status',
       'over_ceiling', 'requires_approval', 'approver_user_id', 'created_by_user_id', 'created_at'
     );
-    query = scopeToCompany(query, req.user);
+    query = scopeToCompany(query, req.user, 'company_id', platformCompanyId);
 
     // موظف المشتريات يرى طلباته هو فقط؛ المدير والمالك يريان طلبات الشركة كلها.
     if (['procurement_buyer', 'ai_agent'].includes(req.user.role)) {
@@ -107,6 +112,13 @@ router.get('/', async (req, res, next) => {
     if (req.query.status) query = query.where({ status: String(req.query.status) });
 
     const requests = await query.orderBy('created_at', 'desc').limit(200);
+    await audit.recordPlatformView(req, {
+      companyId: platformCompanyId,
+      action: 'platform.viewed_requests',
+      entityType: 'company',
+      entityId: platformCompanyId,
+      payload: { filters: { status: req.query.status ? String(req.query.status) : null }, count: requests.length }
+    });
     return res.json({ requests });
   } catch (err) {
     return next(err);
@@ -148,6 +160,15 @@ router.get('/:id', async (req, res, next) => {
       .orderBy('approvals.decided_at', 'asc');
 
     const purchaseOrder = await db('purchase_orders').where({ request_id: request.id }).first();
+
+    // الشركة معروفة من الصف نفسه، فلا معامل — لكن اطلاع المنصة يُقيَّد في سجلها.
+    await audit.recordPlatformView(req, {
+      companyId: request.company_id,
+      action: 'platform.viewed_request',
+      entityType: 'request',
+      entityId: request.id,
+      payload: { reference: request.reference }
+    });
 
     return res.json({
       request,

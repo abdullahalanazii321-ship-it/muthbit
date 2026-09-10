@@ -5,7 +5,7 @@ const { z } = require('zod');
 const db = require('../db/knex');
 const env = require('../config/env');
 const audit = require('../utils/audit');
-const { requireAuth, requireRole, scopeToCompany } = require('../middleware/auth');
+const { requireAuth, requireRole, scopeToCompany, resolvePlatformCompany } = require('../middleware/auth');
 const { badRequest, notFound, forbidden, conflict } = require('../utils/errors');
 
 const router = express.Router();
@@ -69,10 +69,23 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
 router.get('/:id/users', requireRole('company_owner', 'finance_manager', 'procurement_manager', 'platform_admin'), async (req, res, next) => {
   try {
     if (req.user.role !== 'platform_admin' && req.params.id !== req.user.companyId) throw forbidden();
+    // الشركة في المسار نفسه؛ ولمسؤول المنصة يُتحقق أنها صالحة وموجودة قبل القراءة وتقييد الاطلاع.
+    const platformCompanyId = req.user.role === 'platform_admin'
+      ? await resolvePlatformCompany(req.params.id, 'مسؤول المنصة يقرأ مستخدمي شركة محددة — حدّد الشركة.')
+      : null;
     const rows = await scopeToCompany(
       db('users').select('id', 'email', 'full_name', 'role', 'status', 'created_at').where({ company_id: req.params.id }),
-      req.user
+      req.user,
+      'company_id',
+      platformCompanyId
     ).orderBy('created_at', 'asc');
+    await audit.recordPlatformView(req, {
+      companyId: platformCompanyId,
+      action: 'platform.viewed_users',
+      entityType: 'company',
+      entityId: platformCompanyId,
+      payload: { count: rows.length }
+    });
     return res.json({ users: rows });
   } catch (err) {
     return next(err);

@@ -29,7 +29,12 @@ const SIGNAL_ACTIONS = new Set([
   'user.suspended',
   'company.suspended',
   'supplier.suspended',
-  'supplier.rejected'
+  'supplier.rejected',
+  // اطلاع المنصة ليس خطأً، لكنه يجب أن يلفت نظر الشركة لا أن يمر بين السطور.
+  'platform.viewed_requests',
+  'platform.viewed_request',
+  'platform.viewed_audit',
+  'platform.viewed_users'
 ]);
 const SEAL_ACTIONS = new Set(['request.approved', 'purchase_order.issued', 'supplier.verified', 'company.active']);
 

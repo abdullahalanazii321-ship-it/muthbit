@@ -332,6 +332,55 @@ async function run() {
     .send({ reason: 'اختبار حماية المالك' });
   check('المدير المالي لا يوقف المالك', suspendOwner.status === 403, suspendOwner.body);
 
+  section('١٣ — اطلاع مسؤول المنصة');
+
+  // أحداث platform.* كما يراها المالك في سجل شركته.
+  const platformEventsSeenByOwner = async () => {
+    const res = await request(app).get('/api/audit?limit=500').set(auth(owner.token));
+    return (res.body.events || []).filter((e) => String(e.action).startsWith('platform.'));
+  };
+
+  const platformNoCompany = await request(app).get('/api/requests').set(auth(platform.token));
+  check('المنصة لا تقرأ الطلبات دون تسمية الشركة', platformNoCompany.status === 400, platformNoCompany.body);
+
+  const platformList = await request(app)
+    .get(`/api/requests?company_id=${owner.user.company_id}`)
+    .set(auth(platform.token));
+  const afterPlatformList = await platformEventsSeenByOwner();
+  check(
+    'اطلاع المنصة على طلبات شركة يُقيَّد في سجلها',
+    platformList.status === 200 &&
+      afterPlatformList.some((e) => e.action === 'platform.viewed_requests' && e.actor_role === 'platform_admin'),
+    { status: platformList.status, events: afterPlatformList.map((e) => e.action) }
+  );
+
+  const platformOne = await request(app).get(`/api/requests/${requestId}`).set(auth(platform.token));
+  const afterPlatformOne = await platformEventsSeenByOwner();
+  check(
+    'اطلاع المنصة على طلب بعينه يُقيَّد ومعه مرجعه',
+    platformOne.status === 200 &&
+      afterPlatformOne.some(
+        (e) =>
+          e.action === 'platform.viewed_request' &&
+          e.entity_id === requestId &&
+          e.payload &&
+          e.payload.reference === created.body.request.reference
+      ),
+    { status: platformOne.status }
+  );
+
+  // أحداث المنصة السابقة موجودة في السجل؛ المطلوب أن قراءة المالك لا تضيف إليها شيئاً.
+  const beforeOwnerRead = await platformEventsSeenByOwner();
+  const ownerRead = await request(app).get('/api/requests').set(auth(owner.token));
+  const afterOwnerRead = await platformEventsSeenByOwner();
+  check(
+    'قراءة المالك طلبات شركته لا تُقيَّد اطلاعاً',
+    ownerRead.status === 200 &&
+      afterOwnerRead.length === beforeOwnerRead.length &&
+      afterOwnerRead.every((e) => e.actor_role === 'platform_admin'),
+    { status: ownerRead.status, before: beforeOwnerRead.length, after: afterOwnerRead.length }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);
