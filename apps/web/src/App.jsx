@@ -1,7 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
 import LoginPage from './pages/LoginPage.jsx';
-import HomePage from './pages/HomePage.jsx';
+import RequestsPage from './pages/RequestsPage.jsx';
+import NewRequestPage from './pages/NewRequestPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
 
@@ -26,7 +27,15 @@ export default function App() {
         path="/"
         element={
           <RequireSession>
-            <HomePage />
+            <RequestsPage />
+          </RequireSession>
+        }
+      />
+      <Route
+        path="/requests/new"
+        element={
+          <RequireSession>
+            <NewRequestPage />
           </RequireSession>
         }
       />
