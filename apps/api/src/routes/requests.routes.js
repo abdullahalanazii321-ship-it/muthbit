@@ -37,7 +37,24 @@ router.post('/', requireRole(BUYER_ROLES), async (req, res, next) => {
       amount: 0,
       categoryId: parsed.data.category_id || null
     });
-    if (!precheck.allowed) throw policyBlocked('السياسة تمنع فتح هذا الطلب.', { reasons: precheck.reasons });
+    if (!precheck.allowed) {
+      // المحاولة الممنوعة تُقيَّد قبل رمي الخطأ. لا طلب أُنشئ بعد، فالكيان فارغ،
+      // و null لا trx: لا معاملة هنا أصلاً.
+      await audit.record(null, {
+        actor: req.user,
+        entityType: 'request',
+        entityId: null,
+        action: 'request.policy_blocked',
+        payload: {
+          item: parsed.data.item,
+          quantity: parsed.data.quantity,
+          category_id: parsed.data.category_id || null,
+          reasons: precheck.reasons
+        },
+        ip: req.ip
+      });
+      throw policyBlocked('السياسة تمنع فتح هذا الطلب.', { reasons: precheck.reasons });
+    }
 
     const created = await db.transaction(async (trx) => {
       const reference = await nextReference(trx, 'requests', 'reference', 'PR');
@@ -181,7 +198,8 @@ router.post('/:id/select-offer', requireRole(BUYER_ROLES), async (req, res, next
       });
 
       if (!decision.allowed) {
-        await audit.record(trx, {
+        // خارج المعاملة (null لا trx): رمي الخطأ بعده يتراجع بالمعاملة، والقيد يجب أن يبقى.
+        await audit.record(null, {
           actor: req.user,
           entityType: 'request',
           entityId: request.id,

@@ -99,6 +99,8 @@ router.post('/', async (req, res, next) => {
 
       await audit.record(trx, {
         actor: req.user,
+        // شركة الطلب لا شركة الفاعل: المورد بلا شركة، فبدونها لا يرى المشتري الحدث في سجله.
+        companyId: request.company_id,
         entityType: 'offer',
         entityId: offer.id,
         action: 'offer.submitted',
@@ -156,8 +158,11 @@ router.post('/:id/withdraw', async (req, res, next) => {
 
     await db.transaction(async (trx) => {
       await trx('offers').where({ id: offer.id }).update({ status: 'withdrawn', updated_at: trx.fn.now() });
+      // شركة الطلب لا شركة الفاعل — كما في تقديم العرض.
+      const request = await trx('requests').select('company_id').where({ id: offer.request_id }).first();
       await audit.record(trx, {
         actor: req.user,
+        companyId: request && request.company_id,
         entityType: 'offer',
         entityId: offer.id,
         action: 'offer.withdrawn',

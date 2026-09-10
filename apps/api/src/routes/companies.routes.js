@@ -212,6 +212,10 @@ router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_
     const target = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
     if (!target) throw notFound('المستخدم غير موجود في هذه الشركة.');
     if (target.id === req.user.id) throw badRequest('لا يمكنك إيقاف حسابك بنفسك.');
+    // الإيقاف يلغي طلبات صاحبه المفتوحة؛ فلا يُجمَّد المالك إلا بيد مالك.
+    if (target.role === 'company_owner' && req.user.role !== 'company_owner') {
+      throw forbidden('إيقاف مالك الشركة لا يتم إلا بواسطة مالك.');
+    }
 
     await db.transaction(async (trx) => {
       await trx('users').where({ id: target.id }).update({ status: 'suspended', updated_at: trx.fn.now() });
