@@ -294,6 +294,44 @@ async function run() {
   }
   check('حذف سجل التدقيق مرفوض من قاعدة البيانات', deleteBlocked);
 
+  section('١٢ — نزاهة السجل والحوكمة');
+
+  // المحاولة التي منعتها السياسة تترك أثراً: قيد الفحص المبكر يُكتب خارج أي معاملة.
+  // (محاولة «موظف بلا سقف» في القسم ٨)
+  const blockedAudit = await request(app)
+    .get('/api/audit?entity_type=request&limit=500')
+    .set(auth(owner.token));
+  check(
+    'محاولة الطلب بلا سقف تُقيَّد في السجل',
+    (blockedAudit.body.events || []).some(
+      (e) =>
+        e.action === 'request.policy_blocked' &&
+        e.entity_id === null &&
+        e.payload &&
+        e.payload.item === 'أي صنف' &&
+        (e.payload.reasons || []).some((r) => r.code === 'no_limits_configured')
+    ),
+    { status: blockedAudit.status }
+  );
+
+  // أحداث العروض تُنسب لشركة الطلب، فيراها مالكها رغم أن فاعلها مورد بلا شركة.
+  // (العرض المكتمل في القسم ٣)
+  const offerAudit = await request(app)
+    .get(`/api/audit?entity_id=${completeOffer.body.offer.id}`)
+    .set(auth(owner.token));
+  check(
+    'عرض المورد يظهر لمالك الشركة في السجل',
+    (offerAudit.body.events || []).some((e) => e.action === 'offer.submitted'),
+    { status: offerAudit.status }
+  );
+
+  // لا يُجمَّد المالك إلا بيد مالك. يُفحص أخيراً: لو انكسر المنع يوماً لما مسّ إيقافُ المالك ما قبله.
+  const suspendOwner = await request(app)
+    .post(`/api/companies/${owner.user.company_id}/users/${owner.user.id}/suspend`)
+    .set(auth(finance.token))
+    .send({ reason: 'اختبار حماية المالك' });
+  check('المدير المالي لا يوقف المالك', suspendOwner.status === 403, suspendOwner.body);
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

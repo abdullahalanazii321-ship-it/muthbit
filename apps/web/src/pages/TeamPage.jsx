@@ -14,6 +14,7 @@ const COLUMNS = ['الاسم', 'البريد', 'الدور', 'الحالة', 'ا
 const ACTIONS_COLUMN = 'إجراءات';
 const SKELETON_ROWS = 4;
 const SUSPENDED = 'suspended';
+const OWNER_ROLE = 'company_owner';
 const MIN_PASSWORD_LENGTH = 8; // createUserSchema في الخادم
 
 const isUsersResponse = (data) => Array.isArray(data?.users);
@@ -245,8 +246,12 @@ function UsersTable({ loading = false, users = [], me, canManage, busy = false, 
             : users.map((user) => {
                 const entry = limits[user.id];
                 const limitsKnown = entry?.status === 'set' || entry?.status === 'none';
-                // الإيقاف لا يظهر لحسابك نفسه ولا لموقوف أصلاً — يُحذف ولا يُعطَّل.
-                const canSuspend = user.id !== me.id && user.status !== SUSPENDED;
+                // الإيقاف لا يظهر لحسابك نفسه ولا لموقوف أصلاً، ولا على صف المالك لغير مالك
+                // (الخادم يرفضه دائماً) — يُحذف ولا يُعطَّل.
+                const canSuspend =
+                  user.id !== me.id &&
+                  user.status !== SUSPENDED &&
+                  (user.role !== OWNER_ROLE || me.role === OWNER_ROLE);
                 return (
                   <tr key={user.id} className="border-t border-line">
                     <td className="px-4 py-3 text-ink">{user.full_name}</td>
