@@ -6,25 +6,10 @@ const db = require('../db/knex');
 const env = require('../config/env');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireReason } = require('../utils/reason');
 const { badRequest, notFound, conflict, forbidden } = require('../utils/errors');
 
 const router = express.Router();
-
-const MIN_REASON = 5;
-const MAX_REASON = 500;
-
-/**
- * السبب المكتوب شرط كل فعل يسلب.
- * رفض المورد أو إيقافه يسحب كل عروضه من طلبات قائمة عند شركات أخرى —
- * ولا يُترك فعل بهذا الأثر بلا سبب في سجل لا يُعدَّل.
- * ويُفرض هنا لا في الواجهة وحدها: نداء مباشر بلا سبب يُرفض كما يُرفض من الشاشة.
- * ولا يُشترط للتوثيق — السبب يُطلب لما يسلب لا لما يمنح.
- */
-function requireReason(raw, message) {
-  const reason = typeof raw === 'string' ? raw.trim() : '';
-  if (reason.length < MIN_REASON || reason.length > MAX_REASON) throw badRequest(message);
-  return reason;
-}
 
 const registerSchema = z.object({
   supplier: z.object({

@@ -6,28 +6,13 @@ const db = require('../db/knex');
 const env = require('../config/env');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole, scopeToCompany, resolvePlatformCompany } = require('../middleware/auth');
+const { requireReason } = require('../utils/reason');
 const { badRequest, notFound, forbidden, conflict } = require('../utils/errors');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const MANAGEABLE_ROLES = ['finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
-
-const MIN_REASON = 5;
-const MAX_REASON = 500;
-
-/**
- * السبب المكتوب شرط كل فعل يسلب.
- * إيقاف مستخدم يلغي طلباته المفتوحة، وإيقاف شركة يوقف موظفيها كلهم —
- * ولا يُترك فعل بهذا الأثر بلا سبب في سجل لا يُعدَّل.
- * ويُفرض هنا لا في الواجهة وحدها: نداء مباشر بلا سبب يُرفض كما يُرفض من الشاشة.
- * ولا يُشترط لما يمنح — التوثيق والتفعيل وإعادة التفعيل بلا سبب.
- */
-function requireReason(raw, message) {
-  const reason = typeof raw === 'string' ? raw.trim() : '';
-  if (reason.length < MIN_REASON || reason.length > MAX_REASON) throw badRequest(message);
-  return reason;
-}
 
 const COMPANY_STATUSES = ['pending', 'active', 'suspended'];
 

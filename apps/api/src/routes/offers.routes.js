@@ -4,6 +4,7 @@ const { z } = require('zod');
 const db = require('../db/knex');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireReason } = require('../utils/reason');
 const { badRequest, notFound, conflict, forbidden, policyBlocked } = require('../utils/errors');
 
 const router = express.Router();
@@ -149,9 +150,15 @@ router.get('/mine', async (req, res, next) => {
   }
 });
 
+/**
+ * سحب العرض — فعل يسلب: الشركة قد تكون بنت قرارها على هذا العرض،
+ * فيشترط سبباً مكتوباً كبقية ما يسلب في المنصة.
+ * والسبب يصل إلى سجل الشركة المشترية وتقرؤه — والمورد يُخبَر بذلك في الشاشة قبل أن يكتب.
+ */
 router.post('/:id/withdraw', async (req, res, next) => {
   try {
     if (!req.user.supplierId) throw forbidden();
+    const reason = requireReason(req.body && req.body.reason, 'سحب العرض يحتاج سبباً مكتوباً.');
     const offer = await db('offers').where({ id: req.params.id, supplier_id: req.user.supplierId }).first();
     if (!offer) throw notFound('العرض غير موجود.');
     if (offer.status === 'selected') throw conflict('لا يمكن سحب عرض اختاره المشتري.');
@@ -166,6 +173,7 @@ router.post('/:id/withdraw', async (req, res, next) => {
         entityType: 'offer',
         entityId: offer.id,
         action: 'offer.withdrawn',
+        payload: { reason },
         ip: req.ip
       });
     });

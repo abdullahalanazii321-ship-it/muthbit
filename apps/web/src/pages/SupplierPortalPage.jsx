@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { formatDate, formatDays, formatMonths, formatSAR, offerStatusLabel } from '../lib/labels.js';
@@ -8,6 +8,7 @@ import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Detail from '../components/Detail.jsx';
 import OfferForm, { INCOMPLETE_OFFER_HINT } from '../components/OfferForm.jsx';
+import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
 const OPEN_TAB = 'open';
@@ -382,15 +383,21 @@ function TermCell({ value, format }) {
 /**
  * السحب بخطوتين داخل السطر نفسه: العرض المسحوب لا يُستبدل بعرض آخر على الطلب نفسه،
  * فالنقرة الواحدة الخاطئة لا رجعة فيها.
+ * والسبب مطلوب: السحب يسلب الشركة عرضاً قد تكون بنت عليه قرارها.
  * بعد النجاح يبقى الزر بحالة الانتظار حتى تصل القائمة المحدّثة ويختفي معها.
  */
 function WithdrawButton({ offerId, label, onResult }) {
+  const reasonId = useId();
   const [step, setStep] = useState('idle'); // idle · confirm · sending
+  const [reason, setReason] = useState('');
 
   async function withdraw() {
     setStep('sending');
     try {
-      const data = await apiFetch(`/api/offers/${encodeURIComponent(offerId)}/withdraw`, { method: 'POST' });
+      const data = await apiFetch(`/api/offers/${encodeURIComponent(offerId)}/withdraw`, {
+        method: 'POST',
+        body: { reason: reason.trim() }
+      });
       onResult({ ok: true, text: data?.message ?? null });
     } catch (error) {
       // 401: api.js أنهى الجلسة وحوّل إلى /login.
@@ -409,13 +416,28 @@ function WithdrawButton({ offerId, label, onResult }) {
   }
 
   return (
-    <div className="inline-flex flex-wrap gap-2">
-      <Button onClick={withdraw} loading={step === 'sending'} loadingText="جارٍ السحب…">
-        تأكيد السحب
-      </Button>
-      <Button variant="secondary" onClick={() => setStep('idle')} disabled={step === 'sending'}>
-        تراجع
-      </Button>
+    <div className="flex w-64 flex-col gap-4 text-start">
+      <ReasonField
+        id={reasonId}
+        label="سبب سحب العرض"
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        disabled={step === 'sending'}
+        note="تقرأ الشركة المشترية هذا السبب."
+      />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          onClick={withdraw}
+          disabled={!reasonReady(reason)}
+          loading={step === 'sending'}
+          loadingText="جارٍ السحب…"
+        >
+          تأكيد السحب
+        </Button>
+        <Button variant="secondary" onClick={() => setStep('idle')} disabled={step === 'sending'}>
+          تراجع
+        </Button>
+      </div>
     </div>
   );
 }

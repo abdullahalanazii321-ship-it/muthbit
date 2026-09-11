@@ -6,6 +6,7 @@ const audit = require('../utils/audit');
 const policy = require('../services/policy');
 const { nextReference } = require('../utils/reference');
 const { requireAuth, requireRole, scopeToCompany, assertOwnership, resolvePlatformCompany } = require('../middleware/auth');
+const { requireReason } = require('../utils/reason');
 const { badRequest, notFound, forbidden, conflict, policyBlocked } = require('../utils/errors');
 
 const router = express.Router();
@@ -276,13 +277,16 @@ router.post('/:id/decision', requireRole('company_owner', 'finance_manager', 'pr
   try {
     const schema = z.object({
       decision: z.enum(['approved', 'rejected']),
-      reason: z.string().max(1000).optional()
+      // الحدّ يفرضه requireReason برسالته العربية، فلا يسبقه هنا حدّ برسالة أخرى.
+      reason: z.string().optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) throw badRequest('القرار غير صحيح.');
-    if (parsed.data.decision === 'rejected' && !parsed.data.reason) {
-      throw badRequest('الرفض يحتاج سبباً مكتوباً.');
-    }
+    // الرفض يسلب صاحب الطلب مساراً بدأه — فيشترط سبباً بحدّ المنصة نفسه.
+    // والاعتماد يمنح فلا يشترطه.
+    const reason = parsed.data.decision === 'rejected'
+      ? requireReason(parsed.data.reason, 'الرفض يحتاج سبباً مكتوباً.')
+      : null;
 
     const result = await db.transaction(async (trx) => {
       const request = await trx('requests').where({ id: req.params.id }).forUpdate().first();
@@ -304,7 +308,7 @@ router.post('/:id/decision', requireRole('company_owner', 'finance_manager', 'pr
           approver_user_id: req.user.id,
           level: request.over_ceiling ? 2 : 1,
           decision: parsed.data.decision,
-          reason: parsed.data.reason || null,
+          reason,
           amount_at_decision: request.amount
         })
         .returning('*');
@@ -326,7 +330,7 @@ router.post('/:id/decision', requireRole('company_owner', 'finance_manager', 'pr
         entityType: 'request',
         entityId: request.id,
         action: `request.${parsed.data.decision}`,
-        payload: { amount: Number(request.amount), over_ceiling: request.over_ceiling, reason: parsed.data.reason || null },
+        payload: { amount: Number(request.amount), over_ceiling: request.over_ceiling, reason },
         ip: req.ip
       });
 

@@ -8,7 +8,7 @@ import AppHeader from '../components/AppHeader.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Detail from '../components/Detail.jsx';
-import Field from '../components/Field.jsx';
+import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import OfferCard from '../components/OfferCard.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
@@ -265,11 +265,11 @@ function DecisionSection({ action, busy, onApprove, onReject }) {
   const approving = action?.kind === 'approve' && action.sending;
   const sendingReject = action?.kind === 'reject' && action.sending;
   const error = action?.kind === 'approve' || action?.kind === 'reject' ? action.error : null;
-  const reasonReady = reason.trim() !== '';
+  const ready = reasonReady(reason);
 
   function submitReject(event) {
     event.preventDefault();
-    if (!reasonReady || busy) return;
+    if (!ready || busy) return;
     onReject(reason.trim());
   }
 
@@ -278,23 +278,19 @@ function DecisionSection({ action, busy, onApprove, onReject }) {
       {rejecting ? (
         // noValidate: فقاعة تحقق المتصفح تظهر بلغته. الزر معطّل حتى يُكتب السبب.
         <form noValidate onSubmit={submitReject} className="mt-4 flex flex-col gap-4">
-          <Field
+          <ReasonField
             id="reject-reason"
-            as="textarea"
             label="سبب الرفض"
-            rows={3}
-            maxLength={1000}
-            required
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             disabled={sendingReject}
-            hint={<p className="text-muted">الرفض يحتاج سبباً مكتوباً.</p>}
+            note="ويظهر لصاحب الطلب في تفاصيل الطلب."
           />
           <div className="flex flex-wrap gap-3">
             <Button
               type="submit"
               variant="signal"
-              disabled={!reasonReady || busy}
+              disabled={!ready || busy}
               loading={sendingReject}
               loadingText="جارٍ الرفض…"
             >

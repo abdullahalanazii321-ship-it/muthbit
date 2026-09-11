@@ -568,6 +568,83 @@ async function run() {
     .send({ status: 'rejected' });
   check('رفض مورد بلا سبب يُرفض', rejectSupplierNoReason.status === 400, rejectSupplierNoReason.body);
 
+  section('١٧ — القاعدة الواحدة: سحب العرض ورفض الطلب');
+
+  // القسم ١٦ أوقف المشتري بسبب صحيح، فيُعاد تفعيله ويُضبط سقفه من جديد —
+  // بمساري المنصة نفسيهما، فالإيقاف لا يُستأنف تلقائياً.
+  await request(app).post(`${companyPath}/users/${buyer.user.id}/activate`).set(auth(owner.token));
+  await request(app)
+    .put(`${companyPath}/buyers/${buyer.user.id}/limits`)
+    .set(auth(owner.token))
+    .send({ per_request_ceiling: 80000, approver_user_id: finance.user.id, active: true });
+
+  // طلبان: أحدهما لسحب عرضه، والآخر ليُرفض. والخادم يرفض عرضاً ثانياً على الطلب نفسه.
+  const newRequest = async (item) => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set(auth(buyer.token))
+      .send({ item, quantity: 3, category_id: itCategory.id });
+    return res.body.request && res.body.request.id;
+  };
+  const newOffer = async (requestId, price) => {
+    const res = await request(app)
+      .post('/api/offers')
+      .set(auth(supplier.token))
+      .send({ request_id: requestId, price, warranty_months: 12, lead_days: 5 });
+    return res.body.offer && res.body.offer.id;
+  };
+
+  const withdrawRequestId = await newRequest('طابعات ليزر');
+  const withdrawOfferId = await newOffer(withdrawRequestId, 9000);
+
+  const withdrawNoReason = await request(app)
+    .post(`/api/offers/${withdrawOfferId}/withdraw`)
+    .set(auth(supplier.token))
+    .send({});
+  check('سحب عرض بلا سبب يُرفض', withdrawNoReason.status === 400, withdrawNoReason.body);
+
+  // السبب يصل إلى سجل الشركة المشترية: حدث العرض يُنسب لشركة الطلب لا لفاعله.
+  const WITHDRAW_REASON = 'نفدت الكمية من المستودع';
+  const withdrawOk = await request(app)
+    .post(`/api/offers/${withdrawOfferId}/withdraw`)
+    .set(auth(supplier.token))
+    .send({ reason: `  ${WITHDRAW_REASON}  ` });
+  const buyerCompanyAudit = await request(app)
+    .get(`/api/audit?entity_id=${withdrawOfferId}`)
+    .set(auth(owner.token));
+  check(
+    'سبب سحب العرض يصل إلى سجل الشركة المشترية',
+    withdrawOk.status === 200 &&
+      (buyerCompanyAudit.body.events || []).some(
+        (e) => e.action === 'offer.withdrawn' && e.payload && e.payload.reason === WITHDRAW_REASON
+      ),
+    { withdraw: withdrawOk.status, audit: buyerCompanyAudit.status }
+  );
+
+  // رفض الطلب: كان حرف واحد يمر، وصار الحدّ حدَّ المنصة نفسه.
+  const rejectRequestId = await newRequest('حواسيب مكتبية');
+  const rejectOfferId = await newOffer(rejectRequestId, 9500);
+  const rejectSelect = await request(app)
+    .post(`/api/requests/${rejectRequestId}/select-offer`)
+    .set(auth(buyer.token))
+    .send({ offer_id: rejectOfferId });
+
+  const rejectShortReason = await request(app)
+    .post(`/api/requests/${rejectRequestId}/decision`)
+    .set(auth(finance.token))
+    .send({ decision: 'rejected', reason: 'لا' });
+  check('رفض طلب بسبب من حرفين يُرفض', rejectShortReason.status === 400, rejectShortReason.body);
+
+  const rejectOk = await request(app)
+    .post(`/api/requests/${rejectRequestId}/decision`)
+    .set(auth(finance.token))
+    .send({ decision: 'rejected', reason: 'السعر أعلى من المعتاد لهذا الصنف' });
+  check(
+    'رفض طلب بسبب صحيح يمر كما كان',
+    rejectOk.status === 200 && rejectOk.body.request.status === 'rejected',
+    { select: rejectSelect.status, status: rejectOk.status }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);
