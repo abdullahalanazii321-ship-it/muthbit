@@ -179,4 +179,27 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+/**
+ * فئات مورد بعينه كما سجّلها هو — لا كل فئات المنصة.
+ * من يوثّق المورد يقرر اعتماد فئاته، والاعتماد لا يتجاوز ما سجّله،
+ * فلا يُعرض عليه ما لا أثر لاختياره فيه.
+ * ولا تُقيَّد هذه القراءة في سجل تدقيق: لا تخص شركة، فلا سجل نكتب فيه — كقاعدة GET /api/suppliers.
+ */
+router.get('/:id/categories', requireRole('platform_admin'), async (req, res, next) => {
+  try {
+    const supplier = await db('suppliers').select('id').where({ id: req.params.id }).first();
+    if (!supplier) throw notFound('المورد غير موجود.');
+
+    const categories = await db('supplier_categories')
+      .join('categories', 'categories.id', 'supplier_categories.category_id')
+      .where('supplier_categories.supplier_id', supplier.id)
+      .select('categories.id', 'categories.slug', 'categories.name_ar', 'categories.name_en', 'supplier_categories.approved')
+      .orderBy('categories.name_ar', 'asc');
+
+    return res.json({ categories });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

@@ -63,9 +63,15 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
         .returning('*');
 
       // تفعيل الشركة يفعّل مالكها معه — لا معنى لشركة نشطة بلا من يدخل إليها.
+      // أياً كانت حالته: بانتظار التفعيل (شركة جديدة) أو موقوفاً (شركة أُوقفت ثم عادت).
+      //
+      // والمالك وحده لا غير. هذا مقصود: المنصة تعيد للشركة بابها، ثم المالك هو من يقرر
+      // من يعود من فريقه ومن لا يعود. الموظف الذي أوقفه مديره قبل إيقاف الشركة
+      // لا يعود بقرار من المنصة — فلا «تُصلَح» هذه السطور بتوسيع النطاق.
       if (parsed.data.status === 'active') {
         await trx('users')
-          .where({ company_id: company.id, role: 'company_owner', status: 'pending' })
+          .where({ company_id: company.id, role: 'company_owner' })
+          .whereIn('status', ['pending', 'suspended'])
           .update({ status: 'active', updated_at: trx.fn.now() });
       }
       if (parsed.data.status === 'suspended') {
@@ -276,6 +282,44 @@ router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_
     });
 
     return res.json({ message: 'أُوقف الحساب وأُلغيت طلباته المفتوحة.' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * إعادة تفعيل حساب موقوف — نقيض الإيقاف في الدخول وحده.
+ *
+ * لا يُعاد هنا شيء سوى حالة الحساب: لا السقف المعطَّل، ولا مفاتيح الوكلاء الملغاة،
+ * ولا الطلبات التي أُلغيت عند الإيقاف. الإلغاء وقع ولا يُستأنف — إعادة التفعيل
+ * تعيد الدخول لا تمحو ما مضى. من أراد سقفاً فليضبطه من جديد، ومن أراد طلباً فليفتحه من جديد.
+ */
+router.post('/:id/users/:userId/activate', requireRole('company_owner', 'finance_manager'), async (req, res, next) => {
+  try {
+    if (req.params.id !== req.user.companyId) throw forbidden();
+    const target = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
+    if (!target) throw notFound('المستخدم غير موجود في هذه الشركة.');
+    // نفس قيد الإيقاف: حساب المالك لا يُمَسّ إلا بيد مالك. التحقق قبل الحالة،
+    // فمن لا يملك الإجراء لا يُعلَّم بحالة الحساب.
+    if (target.role === 'company_owner' && req.user.role !== 'company_owner') {
+      throw forbidden('إعادة تفعيل مالك الشركة لا تتم إلا بواسطة مالك.');
+    }
+    if (target.status === 'active') throw conflict('الحساب نشط بالفعل.');
+
+    await db.transaction(async (trx) => {
+      await trx('users').where({ id: target.id }).update({ status: 'active', updated_at: trx.fn.now() });
+
+      await audit.record(trx, {
+        actor: req.user,
+        entityType: 'user',
+        entityId: target.id,
+        action: 'user.activated',
+        payload: { from: target.status, role: target.role },
+        ip: req.ip
+      });
+    });
+
+    return res.json({ message: 'أُعيد تفعيل الحساب. لا يعود سقفه المعطَّل ولا طلباته الملغاة.' });
   } catch (err) {
     return next(err);
   }

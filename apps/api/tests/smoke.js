@@ -421,6 +421,101 @@ async function run() {
     { status: stillPending.status }
   );
 
+  section('١٥ — إعادة التفعيل واستعادة الشركة الموقوفة');
+
+  const companyPath = `/api/companies/${owner.user.company_id}`;
+  const userStatus = async (userId) => {
+    const res = await request(app).get(`${companyPath}/users`).set(auth(owner.token));
+    const row = (res.body.users || []).find((u) => u.id === userId);
+    return row ? row.status : null;
+  };
+
+  // الإيقاف كان بلا نقيض: كل إيقاف في المنصة نهائياً. هذا نقيضه — في الدخول وحده.
+  const suspendBuyer = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/suspend`)
+    .set(auth(finance.token))
+    .send({ reason: 'اختبار إعادة التفعيل' });
+  const activateBuyer = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/activate`)
+    .set(auth(finance.token));
+  check(
+    'المدير المالي يوقف مشترياً ثم يعيد تفعيله',
+    suspendBuyer.status === 200 && activateBuyer.status === 200 && (await userStatus(buyer.user.id)) === 'active',
+    { suspend: suspendBuyer.status, activate: activateBuyer.status }
+  );
+
+  const activateAgain = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/activate`)
+    .set(auth(finance.token));
+  check('إعادة تفعيل حساب نشط ترفض بـ 409', activateAgain.status === 409, activateAgain.body);
+
+  // نفس قيد الإيقاف: المالك لا يُمَسّ إلا بيد مالك — والتحقق قبل الحالة، فالمالك نشط ومع ذلك 403.
+  const activateOwner = await request(app)
+    .post(`${companyPath}/users/${owner.user.id}/activate`)
+    .set(auth(finance.token));
+  check('المدير المالي لا يعيد تفعيل المالك', activateOwner.status === 403, activateOwner.body);
+
+  // الشركة الثانية: موظف موقوف قبل إيقاف الشركة، ثم إيقاف الشركة، ثم إعادة توثيقها.
+  const owner2 = await login('admin@owner2-demo.sa');
+  const company2Path = `/api/companies/${owner2.user.company_id}`;
+  await request(app)
+    .post(`${company2Path}/users/${buyer2.user.id}/suspend`)
+    .set(auth(owner2.token))
+    .send({ reason: 'موقوف قبل إيقاف الشركة' });
+
+  const suspendCompany2 = await request(app)
+    .patch(`/api/companies/${owner2.user.company_id}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'suspended' });
+  const owner2Locked = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'admin@owner2-demo.sa', password: PASSWORD });
+
+  const reverifyCompany2 = await request(app)
+    .patch(`/api/companies/${owner2.user.company_id}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'active', source: 'manual' });
+  const owner2Back = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'admin@owner2-demo.sa', password: PASSWORD });
+  const buyer2Still = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'admin@buyer2-demo.sa', password: PASSWORD });
+
+  check(
+    'إعادة توثيق شركة موقوفة تعيد مالكها وحده',
+    suspendCompany2.status === 200 &&
+      owner2Locked.status === 401 &&
+      reverifyCompany2.status === 200 &&
+      owner2Back.status === 200 &&
+      buyer2Still.status === 401,
+    {
+      suspend: suspendCompany2.status,
+      lockedLogin: owner2Locked.status,
+      reverify: reverifyCompany2.status,
+      ownerLogin: owner2Back.status,
+      buyerLogin: buyer2Still.status
+    }
+  );
+
+  // فئات المورد كما سجّلها هو: المورد الجديد سجّل فئة واحدة، والمنصة فيها أكثر.
+  const supplierCategories = await request(app)
+    .get(`/api/suppliers/${freshSupplierId}/categories`)
+    .set(auth(platform.token));
+  check(
+    'فئات المورد هي ما سجّله هو لا كل فئات المنصة',
+    supplierCategories.status === 200 &&
+      supplierCategories.body.categories.length === 1 &&
+      supplierCategories.body.categories[0].slug === 'it' &&
+      categories.body.categories.length > supplierCategories.body.categories.length,
+    { status: supplierCategories.status, count: (supplierCategories.body.categories || []).length }
+  );
+
+  const supplierCategoriesForOwner = await request(app)
+    .get(`/api/suppliers/${freshSupplierId}/categories`)
+    .set(auth(owner.token));
+  check('مالك الشركة لا يقرأ فئات مورد', supplierCategoriesForOwner.status === 403, supplierCategoriesForOwner.body);
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

@@ -86,9 +86,13 @@ export default function TeamPage() {
   // لوحة واحدة مفتوحة في كل مرة: { kind: 'new' } · { kind: 'limits', user, current } · { kind: 'suspend', user }
   const [panel, setPanel] = useState(null);
   const [notice, setNotice] = useState(null);
+  // إعادة التفعيل تنفَّذ من الصف مباشرة بلا بطاقة تأكيد، فحالتها هنا: معرّف الصف الجاري ورسالة فشله.
+  const [activatingId, setActivatingId] = useState(null);
+  const [activateError, setActivateError] = useState(null);
 
   function openPanel(next) {
     setNotice(null);
+    setActivateError(null);
     setPanel(next);
   }
 
@@ -97,6 +101,28 @@ export default function TeamPage() {
     setPanel(null);
     setNotice(text || null);
     users.reload();
+  }
+
+  /**
+   * إعادة التفعيل بلا تأكيد: التأكيد لما لا رجعة فيه، وهذا هو الرجوع نفسه.
+   * وما ألغاه الإيقاف لا يعود معه — تقوله رسالة النجاح صراحةً بدل أن يكتشفه المستخدم بعد حين.
+   */
+  async function activate(user) {
+    if (activatingId) return;
+    setPanel(null);
+    setNotice(null);
+    setActivateError(null);
+    setActivatingId(user.id);
+    try {
+      await apiFetch(`${companyPath}/users/${encodeURIComponent(user.id)}/activate`, { method: 'POST' });
+      setActivatingId(null);
+      finish(`أُعيد تفعيل حساب ${user.full_name}. سقفه وطلباته الملغاة لا تعود — اضبط سقفه من جديد.`);
+    } catch (error) {
+      // 401: api.js أنهى الجلسة وحوّل إلى /login.
+      if (error?.status === 401) return;
+      setActivatingId(null);
+      setActivateError(errorMessage(error));
+    }
   }
 
   return (
@@ -111,6 +137,12 @@ export default function TeamPage() {
         {notice && (
           <div className="mt-6">
             <Alert tone="seal">{notice}</Alert>
+          </div>
+        )}
+
+        {activateError && (
+          <div className="mt-6">
+            <Alert>{activateError}</Alert>
           </div>
         )}
 
@@ -182,6 +214,8 @@ export default function TeamPage() {
                   openPanel({ kind: 'limits', user, current: entry.status === 'set' ? entry.limits : null })
                 }
                 onSuspend={(user) => openPanel({ kind: 'suspend', user })}
+                onActivate={activate}
+                activatingId={activatingId}
               />
             </>
           )}
@@ -214,7 +248,19 @@ function PanelCard({ title, children }) {
 }
 
 /** الجدول داخل حاوية تنزلق أفقياً وحدها على الشاشات الضيقة. */
-function UsersTable({ loading = false, users = [], me, canManage, busy = false, limits = {}, onRetryLimit, onSetLimits, onSuspend }) {
+function UsersTable({
+  loading = false,
+  users = [],
+  me,
+  canManage,
+  busy = false,
+  limits = {},
+  onRetryLimit,
+  onSetLimits,
+  onSuspend,
+  onActivate,
+  activatingId = null
+}) {
   const cell = 'whitespace-nowrap px-4 py-3';
   // عمود الإجراءات لمن يملك الكتابة وحده: لا عمود فارغاً لمن يقرأ فقط.
   const columns = canManage ? [...COLUMNS, ACTIONS_COLUMN] : COLUMNS;
@@ -248,10 +294,10 @@ function UsersTable({ loading = false, users = [], me, canManage, busy = false, 
                 const limitsKnown = entry?.status === 'set' || entry?.status === 'none';
                 // الإيقاف لا يظهر لحسابك نفسه ولا لموقوف أصلاً، ولا على صف المالك لغير مالك
                 // (الخادم يرفضه دائماً) — يُحذف ولا يُعطَّل.
-                const canSuspend =
-                  user.id !== me.id &&
-                  user.status !== SUSPENDED &&
-                  (user.role !== OWNER_ROLE || me.role === OWNER_ROLE);
+                const ownerGuard = user.role !== OWNER_ROLE || me.role === OWNER_ROLE;
+                const canSuspend = user.id !== me.id && user.status !== SUSPENDED && ownerGuard;
+                // إعادة التفعيل للموقوف وحده، وبقيد المالك نفسه — الخادم يردّ 403 لغير مالك على صف مالك.
+                const canActivate = user.status === SUSPENDED && ownerGuard;
                 return (
                   <tr key={user.id} className="border-t border-line">
                     <td className="px-4 py-3 text-ink">{user.full_name}</td>
@@ -277,6 +323,16 @@ function UsersTable({ loading = false, users = [], me, canManage, busy = false, 
                           {canSuspend && (
                             <Button variant="secondary" onClick={() => onSuspend(user)} disabled={busy}>
                               إيقاف
+                            </Button>
+                          )}
+                          {canActivate && (
+                            <Button
+                              onClick={() => onActivate(user)}
+                              disabled={busy || (activatingId !== null && activatingId !== user.id)}
+                              loading={activatingId === user.id}
+                              loadingText="جارٍ التفعيل…"
+                            >
+                              إعادة تفعيل
                             </Button>
                           )}
                         </div>

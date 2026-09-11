@@ -348,7 +348,7 @@ function SuspendCompany({ company, onDone, onCancel }) {
           <li>لا يدخل أحد منهم بعدها، ولا يُنشأ طلب ولا يُعتمد.</li>
         </ul>
         <p className="mt-2">
-          إعادة توثيق الشركة لاحقاً تفعّل الحسابات التي حالتها «بانتظار التفعيل» وحدها — والموقوف يبقى موقوفاً.
+          إعادة التوثيق لاحقاً تعيد تفعيل مالك الشركة، ويتولى هو إعادة بقية الفريق.
         </p>
       </Alert>
 
@@ -595,24 +595,42 @@ function SuppliersTable({ loading = false, suppliers = [], busy = false, onActio
 }
 
 /**
- * توثيق مورد: الفئات المعتمدة فرقها جوهري —
- * اختيار بعضها يعتمد المذكور وحده، وتركه فارغاً يعتمد كل ما سجّله المورد.
+ * توثيق مورد: الفئات المعروضة هي ما سجّله المورد وحده (لا فئات المنصة كلها)،
+ * والمعتمد منها اليوم مؤشَّر مسبقاً.
+ * والفرق جوهري: اختيار بعضها يعتمد المذكور وحده، وتركه فارغاً يعتمد كل ما سجّله.
  */
 function VerifySupplier({ supplier, onDone, onCancel }) {
   const sourceId = useId();
-  const categories = useResource('/api/categories', isCategoriesResponse);
-  const [selected, setSelected] = useState([]);
+  const categories = useResource(
+    `/api/suppliers/${encodeURIComponent(supplier.id)}/categories`,
+    isCategoriesResponse
+  );
+  // null قبل وصول الفئات: لا نبدأ باختيار فارغ يعني «اعتمد الكل» قبل أن نعرف ما المعتمد الآن.
+  const [selected, setSelected] = useState(null);
   const [source, setSource] = useState('manual');
+
+  const ready = categories.status === 'ready';
+  const list = ready ? categories.data.categories : [];
+  const chosen = selected ?? [];
+
+  // ما هو معتمد اليوم يبدأ مؤشَّراً، فلا يسحب التوثيقُ اعتماداً قائماً بسكوت المستخدم.
+  useEffect(() => {
+    if (categories.status !== 'ready') return;
+    setSelected(categories.data.categories.filter((category) => category.approved).map((category) => category.id));
+  }, [categories.status, categories.data]);
 
   const action = useAction(async () => {
     const body = { status: 'verified', source };
-    if (selected.length) body.approve_category_ids = selected;
+    if (chosen.length) body.approve_category_ids = chosen;
     await apiFetch(`/api/suppliers/${encodeURIComponent(supplier.id)}/verification`, { method: 'PATCH', body });
     onDone(`وُثّق المورد «${supplier.name}».`);
   });
 
   function toggle(id) {
-    setSelected((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
+    setSelected((current) => {
+      const value = current ?? [];
+      return value.includes(id) ? value.filter((item) => item !== id) : [...value, id];
+    });
   }
 
   return (
@@ -644,27 +662,32 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
           </div>
         )}
 
-        {categories.status === 'ready' && (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {categories.data.categories.map((category) => (
-              <label key={category.id} className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded-sm border-line-strong accent-seal"
-                  checked={selected.includes(category.id)}
-                  onChange={() => toggle(category.id)}
-                  disabled={action.sending}
-                />
-                {category.name_ar}
-              </label>
-            ))}
-          </div>
+        {ready && list.length > 0 && (
+          <>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {list.map((category) => (
+                <label key={category.id} className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded-sm border-line-strong accent-seal"
+                    checked={chosen.includes(category.id)}
+                    onChange={() => toggle(category.id)}
+                    disabled={action.sending}
+                  />
+                  {category.name_ar}
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 text-sm text-muted">اترك الاختيار فارغاً لاعتماد كل الفئات التي سجّلها المورد.</p>
+          </>
         )}
 
-        <p className="mt-3 text-sm text-muted">اترك الاختيار فارغاً لاعتماد كل الفئات التي سجّلها المورد.</p>
-        <p className="mt-1 text-sm text-muted">
-          الاعتماد لا يتجاوز ما سجّله المورد عند تسجيله: فئة لم يسجّلها لا تُعتمد له باختيارها هنا.
-        </p>
+        {/* مورد بلا فئة حالة صحيحة لا خطأ: يُوثَّق ويدخل، ولا يصله طلب. يُقال صراحةً قبل التأكيد. */}
+        {ready && list.length === 0 && (
+          <p className="mt-3 text-sm text-signal">
+            هذا المورد لم يسجّل أي فئة. توثيقه يسمح له بالدخول لكنه لن يرى أي طلب.
+          </p>
+        )}
       </fieldset>
 
       <Field

@@ -70,6 +70,7 @@ export const auditActionLabels = {
   'user.created': 'إنشاء مستخدم',
   'user.login': 'تسجيل دخول',
   'user.suspended': 'إيقاف مستخدم',
+  'user.activated': 'إعادة تفعيل مستخدم',
   'limits.set': 'ضبط سقوف مشترٍ',
   'request.created': 'إنشاء طلب',
   'request.offer_selected': 'اختيار عرض',

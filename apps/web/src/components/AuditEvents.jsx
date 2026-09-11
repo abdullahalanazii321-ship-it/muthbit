@@ -24,7 +24,13 @@ const SIGNAL_ACTIONS = new Set([
   'platform.viewed_audit',
   'platform.viewed_users'
 ]);
-const SEAL_ACTIONS = new Set(['request.approved', 'purchase_order.issued', 'supplier.verified', 'company.active']);
+const SEAL_ACTIONS = new Set([
+  'request.approved',
+  'purchase_order.issued',
+  'supplier.verified',
+  'company.active',
+  'user.activated'
+]);
 
 function actionTone(action) {
   if (SIGNAL_ACTIONS.has(action)) return 'text-signal';
