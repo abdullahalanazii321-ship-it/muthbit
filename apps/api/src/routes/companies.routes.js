@@ -13,6 +13,31 @@ router.use(requireAuth);
 
 const MANAGEABLE_ROLES = ['finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
 
+const COMPANY_STATUSES = ['pending', 'active', 'suspended'];
+
+/**
+ * قائمة الشركات — فريق المنصة وحده.
+ * مسار منصة لا مسار شركة: لا يُفتح لدور آخر، ولا يُقيَّد في سجل تدقيق
+ * لأنه لا يخص شركة بعينها فلا سجل يُكتب فيه.
+ * الأحدث تسجيلاً أولاً — فهو ما ينتظر التوثيق.
+ */
+router.get('/', requireRole('platform_admin'), async (req, res, next) => {
+  try {
+    const query = db('companies').select(
+      'id', 'name', 'cr_number', 'city', 'status', 'verification_source', 'verified_at', 'created_at'
+    );
+    if (req.query.status) {
+      const status = String(req.query.status);
+      if (!COMPANY_STATUSES.includes(status)) throw badRequest('حالة الشركة غير صحيحة.');
+      query.where({ status });
+    }
+    const companies = await query.orderBy('created_at', 'desc');
+    return res.json({ companies });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** توثيق شركة وتفعيلها — فريق المنصة فقط. */
 router.patch('/:id/verification', requireRole('platform_admin'), async (req, res, next) => {
   try {

@@ -1,6 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useSession } from '../lib/session.js';
-import { canViewAudit, canViewTeam, homeFor } from '../lib/access.js';
+import { canViewAudit, canViewPlatform, canViewTeam, homeFor } from '../lib/access.js';
 import { roleLabel } from '../lib/labels.js';
 import Button from './Button.jsx';
 
@@ -12,10 +12,13 @@ const navLinkClass = ({ isActive }) =>
 /**
  * شريط أعلى كل شاشة داخلية: اسم المنصة رابطاً إلى الصفحة الرئيسية لدور المستخدم،
  * وروابط «الفريق» و«سجل التدقيق» للأدوار المسموح لها وحدها، واسم المستخدم ودوره بالعربية، وتسجيل الخروج.
+ * مسؤول المنصة لا يرى إلا «لوحة المنصة»: «الطلبات» و«الفريق» و«سجل التدقيق» مسارات شركة،
+ * وهو بلا شركة فتردّ عليه بخطأ — إخفاؤها تصحيح لا تجميل.
  */
 export default function AppHeader() {
   const { session, signOut } = useSession();
   const { fullName, role } = session.user;
+  const showPlatform = canViewPlatform(session.user);
   const showTeam = canViewTeam(session.user);
   const showAudit = canViewAudit(session.user);
 
@@ -26,8 +29,13 @@ export default function AppHeader() {
           <Link to={homeFor(session.user)} className={`rounded-sm font-display text-lg font-semibold text-ink ${focusRing}`}>
             منصة مثبت
           </Link>
-          {(showTeam || showAudit) && (
+          {(showPlatform || showTeam || showAudit) && (
             <nav aria-label="التنقل الرئيسي" className="flex flex-wrap items-center gap-5">
+              {showPlatform && (
+                <NavLink to="/platform" className={navLinkClass}>
+                  لوحة المنصة
+                </NavLink>
+              )}
               {showTeam && (
                 <NavLink to="/team" className={navLinkClass}>
                   الفريق

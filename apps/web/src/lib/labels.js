@@ -29,6 +29,26 @@ export const offerStatusLabels = {
   withdrawn: 'مسحوب'
 };
 
+// حالة الشركة كما في عمود status في جدول companies.
+export const companyStatusLabels = {
+  pending: 'بانتظار التوثيق',
+  active: 'موثّقة',
+  suspended: 'موقوفة'
+};
+
+// حالة توثيق المورد كما في عمود verification_status في جدول suppliers.
+export const supplierStatusLabels = {
+  pending: 'بانتظار التوثيق',
+  verified: 'موثّق',
+  rejected: 'مرفوض',
+  suspended: 'موقوف'
+};
+
+// نغمة شارة كل حالة توثيق — اسم نغمة لا لون، والألوان نفسها في tokens.css وحدها.
+// (حالات الطلب التسع لها خريطة status في tokens.js؛ وهذه مفردات أخرى لا تخصها.)
+export const companyStatusTones = { pending: 'signal', active: 'seal', suspended: 'signal' };
+export const supplierStatusTones = { pending: 'signal', verified: 'seal', rejected: 'signal', suspended: 'signal' };
+
 // حالة حساب المستخدم.
 export const userStatusLabels = {
   active: 'نشط',
@@ -98,6 +118,16 @@ export function offerStatusLabel(status) {
 /** حالة حساب المستخدم بالعربية. */
 export function userStatusLabel(status) {
   return labelFrom(userStatusLabels, status);
+}
+
+/** حالة الشركة بالعربية. */
+export function companyStatusLabel(status) {
+  return labelFrom(companyStatusLabels, status);
+}
+
+/** حالة توثيق المورد بالعربية. */
+export function supplierStatusLabel(status) {
+  return labelFrom(supplierStatusLabels, status);
 }
 
 /** حدث التدقيق بالعربية، والرمز الإنجليزي كما هو إن لم يكن في القاموس. */
@@ -177,6 +207,11 @@ export function formatMonths(value) {
 /** مدة التسليم بصيغة «7 أيام». */
 export function formatDays(value) {
   return formatCount(value, { one: 'يوم واحد', two: 'يومان', few: 'أيام', many: 'يوماً', other: 'يوم' });
+}
+
+/** عدد التقييمات بصيغة «تقييم واحد» · «تقييمان» · «5 تقييمات». */
+export function formatRatingCount(value) {
+  return formatCount(value, { one: 'تقييم واحد', two: 'تقييمان', few: 'تقييمات', many: 'تقييماً', other: 'تقييم' });
 }
 
 /** عدد العروض بصيغة «عرض واحد» · «عرضان» · «3 عروض» · «11 عرضاً». */

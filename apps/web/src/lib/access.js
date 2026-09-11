@@ -2,9 +2,12 @@
 
 export const COMPANY_HOME = '/';
 export const SUPPLIER_HOME = '/supplier';
+export const PLATFORM_HOME = '/platform';
 
 // الأدوار التي يسمح لها GET /api/audit — apps/api/src/routes/audit.routes.js.
-const AUDIT_ROLES = ['company_owner', 'finance_manager', 'procurement_manager', 'platform_admin'];
+// مسؤول المنصة يسمح له الخادم، لكنه يردّ 400 ما لم يسمِّ الشركة (?company_id=)،
+// وشاشة /audit لا تسمّيها. سجلات الشركات يقرأها من لوحة المنصة مسمّاة — فلا مكان له هنا.
+const AUDIT_ROLES = ['company_owner', 'finance_manager', 'procurement_manager'];
 
 // فريق الشركة — apps/api/src/routes/companies.routes.js:
 // القراءة (المستخدمون والسقوف) لثلاثة أدوار، والكتابة (إنشاء · ضبط سقف · إيقاف) لاثنين منها.
@@ -18,12 +21,22 @@ export const CREATABLE_ROLES = ['finance_manager', 'procurement_manager', 'procu
 /** من يملك قرار الاعتماد (مسار decision في requests.routes.js) — ومنهم وحدهم يُختار المعتمِد. */
 export const APPROVER_ROLES = ['company_owner', 'finance_manager', 'procurement_manager'];
 
-/** المورد مكانه بوابته، وغيره مكانه لوحة الشركة. */
+/**
+ * مكان كل دور: المورد بوابته، ومسؤول المنصة لوحته، وغيرهما لوحة الشركة.
+ * مسؤول المنصة بلا شركة، ومسارات الشركة تردّ عليه بخطأ — فمكانه /platform لا /.
+ */
 export function homeFor(user) {
-  return user?.role === 'supplier_admin' ? SUPPLIER_HOME : COMPANY_HOME;
+  if (user?.role === 'supplier_admin') return SUPPLIER_HOME;
+  if (user?.role === 'platform_admin') return PLATFORM_HOME;
+  return COMPANY_HOME;
 }
 
-/** يظهر رابط سجل التدقيق ويُفتح مساره لهذه الأدوار الأربعة وحدها. */
+/** لوحة المنصة لمسؤول المنصة وحده — لا دور آخر يفتحها. */
+export function canViewPlatform(user) {
+  return user?.role === 'platform_admin';
+}
+
+/** يظهر رابط سجل التدقيق ويُفتح مساره لأدوار الشركة الثلاثة وحدها. */
 export function canViewAudit(user) {
   return AUDIT_ROLES.includes(user?.role);
 }

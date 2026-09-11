@@ -1,11 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
-import { COMPANY_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
+import { COMPANY_HOME, PLATFORM_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
 import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
+import PlatformPage from './pages/PlatformPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
 import TeamPage from './pages/TeamPage.jsx';
 import Alert from './components/Alert.jsx';
@@ -77,6 +78,15 @@ export default function App() {
         element={
           <RequireSession home={SUPPLIER_HOME}>
             <SupplierPortalPage />
+          </RequireSession>
+        }
+      />
+      {/* لوحة المنصة مكان مسؤول المنصة (homeFor)، فأي دور آخر يفتحها يُعاد إلى مكانه هو. */}
+      <Route
+        path="/platform"
+        element={
+          <RequireSession home={PLATFORM_HOME}>
+            <PlatformPage />
           </RequireSession>
         }
       />

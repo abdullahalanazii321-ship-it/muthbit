@@ -381,6 +381,46 @@ async function run() {
     { status: ownerRead.status, before: beforeOwnerRead.length, after: afterOwnerRead.length }
   );
 
+  section('١٤ — قائمة الشركات وتوثيق مورد جديد');
+
+  const companiesList = await request(app).get('/api/companies').set(auth(platform.token));
+  check(
+    'مسؤول المنصة يقرأ قائمة الشركات',
+    companiesList.status === 200 &&
+      (companiesList.body.companies || []).some((c) => c.id === owner.user.company_id && c.name === 'شركة الأفق للمقاولات'),
+    { status: companiesList.status }
+  );
+
+  const companiesForOwner = await request(app).get('/api/companies').set(auth(owner.token));
+  check('مالك الشركة لا يقرأ قائمة الشركات', companiesForOwner.status === 403, companiesForOwner.body);
+
+  // مورد جديد يدخل pending ثم يُوثَّق — الطريق الذي كانت الواجهة تعجز عنه.
+  const unique = String(Date.now()).slice(-10);
+  const freshSupplier = await request(app)
+    .post('/api/suppliers/register')
+    .send({
+      supplier: { name: `مورد فحص التوثيق ${unique}`, cr_number: unique, city: 'الرياض', category_slugs: ['it'] },
+      admin: { full_name: 'مسؤول مورد الفحص', email: `verify-${unique}@supplier-test.sa`, password: PASSWORD }
+    });
+  const freshSupplierId = freshSupplier.body.supplier && freshSupplier.body.supplier.id;
+
+  const verifyFresh = await request(app)
+    .patch(`/api/suppliers/${freshSupplierId}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'verified', source: 'manual' });
+  check(
+    'مسؤول المنصة يوثّق مورداً جديداً',
+    freshSupplier.status === 201 && verifyFresh.status === 200 && verifyFresh.body.supplier.verification_status === 'verified',
+    { register: freshSupplier.status, verify: verifyFresh.status }
+  );
+
+  const stillPending = await request(app).get('/api/suppliers?status=pending').set(auth(platform.token));
+  check(
+    'المورد الموثّق يخرج من قائمة بانتظار التوثيق',
+    stillPending.status === 200 && !(stillPending.body.suppliers || []).some((s) => s.id === freshSupplierId),
+    { status: stillPending.status }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

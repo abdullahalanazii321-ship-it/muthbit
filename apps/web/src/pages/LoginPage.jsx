@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
-import { useSession } from '../lib/session.js';
+import { normalizeUser, useSession } from '../lib/session.js';
+import { homeFor } from '../lib/access.js';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
@@ -28,7 +29,8 @@ export default function LoginPage() {
         body: { email: email.trim(), password }
       });
       signIn(data);
-      navigate('/', { replace: true });
+      // كل دور إلى مكانه مباشرة: مسؤول المنصة إلى لوحته، والمورد إلى بوابته، وغيرهما إلى لوحة الشركة.
+      navigate(homeFor(normalizeUser(data.user)), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
       setSubmitting(false);
