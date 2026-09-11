@@ -10,6 +10,22 @@ const { badRequest, notFound, conflict, forbidden } = require('../utils/errors')
 
 const router = express.Router();
 
+const MIN_REASON = 5;
+const MAX_REASON = 500;
+
+/**
+ * السبب المكتوب شرط كل فعل يسلب.
+ * رفض المورد أو إيقافه يسحب كل عروضه من طلبات قائمة عند شركات أخرى —
+ * ولا يُترك فعل بهذا الأثر بلا سبب في سجل لا يُعدَّل.
+ * ويُفرض هنا لا في الواجهة وحدها: نداء مباشر بلا سبب يُرفض كما يُرفض من الشاشة.
+ * ولا يُشترط للتوثيق — السبب يُطلب لما يسلب لا لما يمنح.
+ */
+function requireReason(raw, message) {
+  const reason = typeof raw === 'string' ? raw.trim() : '';
+  if (reason.length < MIN_REASON || reason.length > MAX_REASON) throw badRequest(message);
+  return reason;
+}
+
 const registerSchema = z.object({
   supplier: z.object({
     name: z.string().min(2).max(200),
@@ -99,11 +115,20 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
     const schema = z.object({
       status: z.enum(['verified', 'rejected', 'suspended', 'pending']),
       source: z.enum(['manual', 'wathq']).optional(),
-      reason: z.string().max(500).optional(),
+      // الحدّ يفرضه requireReason برسالته العربية، فلا يسبقه هنا حدّ برسالة أخرى.
+      reason: z.string().optional(),
       approve_category_ids: z.array(z.string().uuid()).optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) throw badRequest('حالة التوثيق غير صحيحة.');
+
+    // الرفض والإيقاف يسلبان — فيشترطان السبب. والتوثيق يمنح فلا يشترطه.
+    const reason =
+      parsed.data.status === 'rejected'
+        ? requireReason(parsed.data.reason, 'الرفض يحتاج سبباً مكتوباً.')
+        : parsed.data.status === 'suspended'
+          ? requireReason(parsed.data.reason, 'الإيقاف يحتاج سبباً مكتوباً.')
+          : null;
 
     const supplier = await db('suppliers').where({ id: req.params.id }).first();
     if (!supplier) throw notFound('المورد غير موجود.');
@@ -115,7 +140,7 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
           verification_status: parsed.data.status,
           verification_source: parsed.data.source || 'manual',
           verified_at: parsed.data.status === 'verified' ? trx.fn.now() : null,
-          rejection_reason: parsed.data.status === 'rejected' ? parsed.data.reason || null : null,
+          rejection_reason: parsed.data.status === 'rejected' ? reason : null,
           updated_at: trx.fn.now()
         })
         .returning('*');
@@ -145,7 +170,7 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
         entityType: 'supplier',
         entityId: supplier.id,
         action: `supplier.${parsed.data.status}`,
-        payload: { from: supplier.verification_status, to: parsed.data.status, reason: parsed.data.reason || null },
+        payload: { from: supplier.verification_status, to: parsed.data.status, reason },
         ip: req.ip
       });
 

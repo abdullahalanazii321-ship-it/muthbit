@@ -466,7 +466,7 @@ async function run() {
   const suspendCompany2 = await request(app)
     .patch(`/api/companies/${owner2.user.company_id}/verification`)
     .set(auth(platform.token))
-    .send({ status: 'suspended' });
+    .send({ status: 'suspended', reason: 'اختبار استعادة الشركة الموقوفة' });
   const owner2Locked = await request(app)
     .post('/api/auth/login')
     .send({ email: 'admin@owner2-demo.sa', password: PASSWORD });
@@ -515,6 +515,58 @@ async function run() {
     .get(`/api/suppliers/${freshSupplierId}/categories`)
     .set(auth(owner.token));
   check('مالك الشركة لا يقرأ فئات مورد', supplierCategoriesForOwner.status === 403, supplierCategoriesForOwner.body);
+
+  section('١٦ — السبب المكتوب شرط لكل إيقاف');
+
+  // القيد في الخادم لا في الواجهة: هذه نداءات مباشرة بلا شاشة، وتُرفض كما تُرفض من الشاشة.
+  const suspendNoReason = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/suspend`)
+    .set(auth(owner.token))
+    .send({});
+  check('إيقاف مستخدم بلا سبب يُرفض', suspendNoReason.status === 400, suspendNoReason.body);
+
+  const suspendShortReason = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/suspend`)
+    .set(auth(owner.token))
+    .send({ reason: 'ها' });
+  check('إيقاف مستخدم بسبب من محرفين يُرفض', suspendShortReason.status === 400, suspendShortReason.body);
+
+  // الفائدة كلها: أن يبقى السبب في سجل لا يُعدَّل.
+  const REASON = 'مغادرة الموظف للشركة';
+  const suspendWithReason = await request(app)
+    .post(`${companyPath}/users/${buyer.user.id}/suspend`)
+    .set(auth(owner.token))
+    .send({ reason: `  ${REASON}  ` });
+  const reasonAudit = await request(app)
+    .get(`/api/audit?entity_id=${buyer.user.id}&limit=50`)
+    .set(auth(owner.token));
+  check(
+    'السبب المكتوب يصل إلى سجل التدقيق',
+    suspendWithReason.status === 200 &&
+      (reasonAudit.body.events || []).some((e) => e.action === 'user.suspended' && e.payload && e.payload.reason === REASON),
+    { suspend: suspendWithReason.status, audit: reasonAudit.status }
+  );
+
+  const suspendCompanyNoReason = await request(app)
+    .patch(`/api/companies/${owner2.user.company_id}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'suspended' });
+  // والتوثيق يمنح فلا يشترط سبباً — القاعدة للسلب وحده.
+  const verifyCompanyNoReason = await request(app)
+    .patch(`/api/companies/${owner2.user.company_id}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'active', source: 'manual' });
+  check(
+    'إيقاف شركة بلا سبب يُرفض وتوثيقها بلا سبب يمر',
+    suspendCompanyNoReason.status === 400 && verifyCompanyNoReason.status === 200,
+    { suspend: suspendCompanyNoReason.status, verify: verifyCompanyNoReason.status }
+  );
+
+  const rejectSupplierNoReason = await request(app)
+    .patch(`/api/suppliers/${freshSupplierId}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'rejected' });
+  check('رفض مورد بلا سبب يُرفض', rejectSupplierNoReason.status === 400, rejectSupplierNoReason.body);
 
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);

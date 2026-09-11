@@ -19,6 +19,7 @@ import Alert from '../components/Alert.jsx';
 import AuditEvents from '../components/AuditEvents.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
+import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import RequestsTable from '../components/RequestsTable.jsx';
 import { Badge } from '../components/StatusBadge.jsx';
 
@@ -48,7 +49,6 @@ const COMPANY_COLUMNS = ['الاسم', 'السجل التجاري', 'المدي�
 const SUPPLIER_COLUMNS = ['الاسم', 'السجل التجاري', 'المدينة', 'حالة التوثيق', 'التقييم', 'إجراءات'];
 const SKELETON_ROWS = 5;
 const AUDIT_LIMIT = 100;
-const MAX_REASON = 500; // حدّ reason في الخادم
 
 const isCompaniesResponse = (data) => Array.isArray(data?.companies);
 const isSuppliersResponse = (data) => Array.isArray(data?.suppliers);
@@ -331,10 +331,13 @@ function VerifyCompany({ company, onDone, onCancel }) {
 }
 
 function SuspendCompany({ company, onDone, onCancel }) {
+  const reasonId = useId();
+  const [reason, setReason] = useState('');
+
   const action = useAction(async () => {
     await apiFetch(`/api/companies/${encodeURIComponent(company.id)}/verification`, {
       method: 'PATCH',
-      body: { status: 'suspended' }
+      body: { status: 'suspended', reason: reason.trim() }
     });
     onDone(`أُوقفت شركة «${company.name}» وكل مستخدميها.`);
   });
@@ -352,10 +355,24 @@ function SuspendCompany({ company, onDone, onCancel }) {
         </p>
       </Alert>
 
+      <ReasonField
+        id={reasonId}
+        label="سبب الإيقاف"
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        disabled={action.sending}
+      />
+
       {action.error && <Alert>{action.error}</Alert>}
 
       <div className="flex flex-wrap gap-3">
-        <Button variant="signal" onClick={action.submit} loading={action.sending} loadingText="جارٍ الإيقاف…">
+        <Button
+          variant="signal"
+          onClick={action.submit}
+          disabled={!reasonReady(reason)}
+          loading={action.sending}
+          loadingText="جارٍ الإيقاف…"
+        >
           تأكيد الإيقاف
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={action.sending}>
@@ -742,16 +759,13 @@ function RejectSupplier({ supplier, onDone, onCancel }) {
         </ul>
       </Alert>
 
-      <Field
+      <ReasonField
         id={reasonId}
-        as="textarea"
         label="سبب الرفض"
-        rows={3}
-        maxLength={MAX_REASON}
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         disabled={action.sending}
-        hint={<p className="text-muted">السبب يُحفظ في ملف المورد.</p>}
+        note="ويُحفظ كذلك في ملف المورد."
       />
 
       {action.error && <Alert>{action.error}</Alert>}
@@ -760,7 +774,7 @@ function RejectSupplier({ supplier, onDone, onCancel }) {
         <Button
           variant="signal"
           onClick={action.submit}
-          disabled={trimmed === ''}
+          disabled={!reasonReady(reason)}
           loading={action.sending}
           loadingText="جارٍ الرفض…"
         >
@@ -779,9 +793,10 @@ function SuspendSupplier({ supplier, onDone, onCancel }) {
   const [reason, setReason] = useState('');
 
   const action = useAction(async () => {
-    const body = { status: 'suspended' };
-    if (reason.trim()) body.reason = reason.trim();
-    await apiFetch(`/api/suppliers/${encodeURIComponent(supplier.id)}/verification`, { method: 'PATCH', body });
+    await apiFetch(`/api/suppliers/${encodeURIComponent(supplier.id)}/verification`, {
+      method: 'PATCH',
+      body: { status: 'suspended', reason: reason.trim() }
+    });
     onDone(`أُوقف المورد «${supplier.name}» وسُحبت عروضه.`);
   });
 
@@ -795,23 +810,25 @@ function SuspendSupplier({ supplier, onDone, onCancel }) {
         </ul>
       </Alert>
 
-      <Field
+      <ReasonField
         id={reasonId}
-        as="textarea"
         label="سبب الإيقاف"
-        optional
-        rows={3}
-        maxLength={MAX_REASON}
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         disabled={action.sending}
-        hint={<p className="text-muted">سبب الإيقاف يُقيَّد في سجل التدقيق، ولا يُحفظ في ملف المورد.</p>}
+        note="ولا يُحفظ في ملف المورد — الملف يحفظ سبب الرفض وحده."
       />
 
       {action.error && <Alert>{action.error}</Alert>}
 
       <div className="flex flex-wrap gap-3">
-        <Button variant="signal" onClick={action.submit} loading={action.sending} loadingText="جارٍ الإيقاف…">
+        <Button
+          variant="signal"
+          onClick={action.submit}
+          disabled={!reasonReady(reason)}
+          loading={action.sending}
+          loadingText="جارٍ الإيقاف…"
+        >
           تأكيد الإيقاف
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={action.sending}>

@@ -13,6 +13,22 @@ router.use(requireAuth);
 
 const MANAGEABLE_ROLES = ['finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
 
+const MIN_REASON = 5;
+const MAX_REASON = 500;
+
+/**
+ * السبب المكتوب شرط كل فعل يسلب.
+ * إيقاف مستخدم يلغي طلباته المفتوحة، وإيقاف شركة يوقف موظفيها كلهم —
+ * ولا يُترك فعل بهذا الأثر بلا سبب في سجل لا يُعدَّل.
+ * ويُفرض هنا لا في الواجهة وحدها: نداء مباشر بلا سبب يُرفض كما يُرفض من الشاشة.
+ * ولا يُشترط لما يمنح — التوثيق والتفعيل وإعادة التفعيل بلا سبب.
+ */
+function requireReason(raw, message) {
+  const reason = typeof raw === 'string' ? raw.trim() : '';
+  if (reason.length < MIN_REASON || reason.length > MAX_REASON) throw badRequest(message);
+  return reason;
+}
+
 const COMPANY_STATUSES = ['pending', 'active', 'suspended'];
 
 /**
@@ -43,10 +59,16 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
   try {
     const schema = z.object({
       status: z.enum(['active', 'suspended', 'pending']),
-      source: z.enum(['manual', 'wathq']).optional()
+      source: z.enum(['manual', 'wathq']).optional(),
+      reason: z.string().optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) throw badRequest('حالة التوثيق غير صحيحة.');
+
+    // الإيقاف وحده يشترط السبب: التوثيق يمنح، والإيقاف يسلب من كل موظف في الشركة.
+    const reason = parsed.data.status === 'suspended'
+      ? requireReason(parsed.data.reason, 'الإيقاف يحتاج سبباً مكتوباً.')
+      : null;
 
     const company = await db('companies').where({ id: req.params.id }).first();
     if (!company) throw notFound('الشركة غير موجودة.');
@@ -83,7 +105,7 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
         entityType: 'company',
         entityId: company.id,
         action: `company.${parsed.data.status}`,
-        payload: { from: company.status, to: parsed.data.status, source: parsed.data.source || 'manual' },
+        payload: { from: company.status, to: parsed.data.status, source: parsed.data.source || 'manual', reason },
         ip: req.ip
       });
 
@@ -253,6 +275,7 @@ router.get('/:id/buyers/:userId/limits', requireRole('company_owner', 'finance_m
 router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_manager'), async (req, res, next) => {
   try {
     if (req.params.id !== req.user.companyId) throw forbidden();
+    const reason = requireReason(req.body && req.body.reason, 'الإيقاف يحتاج سبباً مكتوباً.');
     const target = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
     if (!target) throw notFound('المستخدم غير موجود في هذه الشركة.');
     if (target.id === req.user.id) throw badRequest('لا يمكنك إيقاف حسابك بنفسك.');
@@ -276,7 +299,7 @@ router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_
         entityType: 'user',
         entityId: target.id,
         action: 'user.suspended',
-        payload: { reason: req.body && req.body.reason ? String(req.body.reason).slice(0, 500) : null },
+        payload: { reason },
         ip: req.ip
       });
     });

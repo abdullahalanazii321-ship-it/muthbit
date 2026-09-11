@@ -9,6 +9,7 @@ import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
 import LimitsForm from '../components/LimitsForm.jsx';
+import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 
 const COLUMNS = ['الاسم', 'البريد', 'الدور', 'الحالة', 'السقف'];
 const ACTIONS_COLUMN = 'إجراءات';
@@ -495,7 +496,7 @@ function SuspendConfirm({ companyPath, user, onSuspended, onCancel }) {
     setSending(true);
     setError(null);
     try {
-      const body = reason.trim() ? { reason: reason.trim() } : undefined;
+      const body = { reason: reason.trim() };
       const data = await apiFetch(`${companyPath}/users/${encodeURIComponent(user.id)}/suspend`, {
         method: 'POST',
         body
@@ -521,16 +522,12 @@ function SuspendConfirm({ companyPath, user, onSuspended, onCancel }) {
             إلغاء كل طلباته المفتوحة: المسودة، وبانتظار العروض، وبانتظار الاعتماد.
           </li>
         </ul>
-        <p className="mt-2">لا يوجد في المنصة اليوم مسار لإعادة تفعيل الحساب بعد إيقافه.</p>
+        <p className="mt-2">يمكن إعادة تفعيل الحساب لاحقاً، لكن سقفه وطلباته الملغاة لا تعود.</p>
       </Alert>
 
-      <Field
+      <ReasonField
         id={reasonId}
-        as="textarea"
         label="سبب الإيقاف"
-        optional
-        rows={3}
-        maxLength={500}
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         disabled={sending}
@@ -539,7 +536,13 @@ function SuspendConfirm({ companyPath, user, onSuspended, onCancel }) {
       {error && <Alert>{error}</Alert>}
 
       <div className="flex flex-wrap gap-3">
-        <Button variant="signal" onClick={confirm} loading={sending} loadingText="جارٍ الإيقاف…">
+        <Button
+          variant="signal"
+          onClick={confirm}
+          disabled={!reasonReady(reason)}
+          loading={sending}
+          loadingText="جارٍ الإيقاف…"
+        >
           تأكيد الإيقاف
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={sending}>
