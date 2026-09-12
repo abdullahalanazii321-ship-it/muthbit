@@ -1,5 +1,7 @@
 # منصة مثبت
 
+[![CI](https://github.com/abdullahalanazii321-ship-it/muthbit/actions/workflows/ci.yml/badge.svg)](https://github.com/abdullahalanazii321-ship-it/muthbit/actions/workflows/ci.yml)
+
 منصة مشتريات موثّقة للشركات: موردون موثّقون، وسقوف إنفاق يفرضها النظام، وسلسلة اعتماد قبل أي التزام مالي، وسجل تدقيق لا يُعدَّل.
 
 هذا المستودع يحتوي **المرحلة الأولى**: الأساس التقني — قاعدة البيانات، المصادقة، عزل الأدوار، محرك السقوف والاعتمادات، سجل التدقيق، وطبقة هوية مثبت جاهزة للواجهة.

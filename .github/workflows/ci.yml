@@ -1,0 +1,96 @@
+name: CI
+
+# الفحوص تعمل على كل دفع إلى main وعلى كل طلب دمج.
+# النشر على Render لا يقع إلا بعد نجاحها كلها، وعلى main وحده.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: الفحوص والبناء
+    runs-on: ubuntu-latest
+
+    # قاعدة بيانات مؤقتة تُنشأ مع كل تشغيل وتُهدم بعده.
+    # لا صلة لها بقاعدة الإنتاج، ولا سرّ حقيقي في هذا الملف إطلاقاً.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: muthbit
+          POSTGRES_PASSWORD: muthbit_ci
+          POSTGRES_DB: muthbit_ci
+        ports:
+          - 5432:5432
+        # لا تبدأ الخطوات قبل أن تردّ القاعدة فعلاً — وإلا سقطت المهاجرة بلا سبب مفهوم.
+        options: >-
+          --health-cmd "pg_isready -U muthbit -d muthbit_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://muthbit:muthbit_ci@127.0.0.1:5432/muthbit_ci
+      # بوستجرس المحلي في CI بلا SSL. بدون هذا السطر يحاول knexfile الاتصال مشفّراً فيفشل.
+      PGSSL: 'false'
+      NODE_ENV: test
+      # قيمة اختبار ثابتة لا تُستعمل خارج CI. مفتاح الإنتاج لا يمر من هنا إطلاقاً.
+      JWT_SECRET: ci-not-a-real-secret
+
+    steps:
+      - name: جلب الشيفرة
+        uses: actions/checkout@v4
+
+      - name: تهيئة Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: تثبيت الاعتماديات
+        run: npm ci
+
+      - name: إنشاء الجداول
+        run: npm run api:migrate
+
+      - name: البيانات التجريبية
+        run: npm run api:seed
+
+      - name: فحوص الخادم
+        run: npm run api:test
+
+      - name: بناء الواجهة
+        # NODE_ENV=production لهذه الخطوة وحدها: مع test تبني Vite نسخة React التطويرية
+        # (٦٠٩ ك.ب بدل ٣٥٤)، فيصير الفحص على حزمة غير التي تُنشر.
+        env:
+          NODE_ENV: production
+        run: npm run web:build
+
+      # ---------- النشر ----------
+      # يقع بعد نجاح كل ما سبق (الخطوة لا تُنفَّذ إن سقطت خطوة قبلها)،
+      # وعلى دفع إلى main وحده — لا على طلبات الدمج.
+      # وإن لم يُضبط السرّ بعد، تتخطّى الخطوة نفسها بهدوء ولا تُسقط CI.
+      - name: نشر الخادم على Render
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "السرّ RENDER_API_DEPLOY_HOOK غير مضبوط — تخطّي نشر الخادم."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$HOOK" > /dev/null
+          echo "أُرسل طلب نشر الخادم إلى Render."
+
+      - name: نشر الواجهة على Render
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "السرّ RENDER_WEB_DEPLOY_HOOK غير مضبوط — تخطّي نشر الواجهة."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$HOOK" > /dev/null
+          echo "أُرسل طلب نشر الواجهة إلى Render."
