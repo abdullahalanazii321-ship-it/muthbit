@@ -17,6 +17,8 @@ const request = require('supertest');
 const createApp = require('../src/app');
 const db = require('../src/db/knex');
 const { setLimitsEnabledForTests } = require('../src/middleware/rateLimit');
+const sentry = require('../src/utils/sentry');
+const envConfig = require('../src/config/env');
 
 const app = createApp();
 const PASSWORD = 'Test@1234';
@@ -720,6 +722,42 @@ async function run() {
   } finally {
     setLimitsEnabledForTests(false);
   }
+
+  section('١٩ — فحص الصحة وتتبّع الأخطاء');
+
+  const health = await request(app).get('/health');
+  check(
+    'فحص الصحة يرد 200 ومعه uptime_seconds و version',
+    health.status === 200 &&
+      typeof health.body.uptime_seconds === 'number' &&
+      typeof health.body.version === 'string' &&
+      health.body.version.length > 0,
+    health.body
+  );
+
+  // مسار عام يقرؤه أي أحد: لا يتسرّب منه شيء عن البنية التحتية.
+  const leakyKey = /database|host|url/i;
+  const collectKeys = (value, acc = [], depth = 0) => {
+    if (depth > 6 || value === null || typeof value !== 'object') return acc;
+    for (const [key, val] of Object.entries(value)) {
+      acc.push(key);
+      collectKeys(val, acc, depth + 1);
+    }
+    return acc;
+  };
+  const healthKeys = collectKeys(health.body);
+  check(
+    'فحص الصحة لا يكشف شيئاً عن قاعدة البيانات',
+    healthKeys.every((key) => !leakyKey.test(key)),
+    { keys: healthKeys }
+  );
+
+  // الحالة الطبيعية على جهاز المطوّر وفي CI: بلا DSN لا تُحمَّل المكتبة ولا يتغيّر سلوك.
+  check(
+    'كل شيء يعمل و SENTRY_DSN غير مضبوط',
+    !envConfig.sentryDsn && sentry.isEnabled() === false && health.status === 200,
+    { dsn: envConfig.sentryDsn, enabled: sentry.isEnabled() }
+  );
 
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);

@@ -5,6 +5,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const env = require('./config/env');
 const db = require('./db/knex');
+const pkg = require('../package.json');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { loginLimiter, accountCreationLimiter, agentKeyLimiter, apiLimiter } = require('./middleware/rateLimit');
 
@@ -26,12 +27,20 @@ function createApp() {
   app.use(express.json({ limit: '1mb' }));
   if (env.env !== 'test') app.use(morgan('tiny'));
 
+  // مسار عام يقرؤه أي أحد: لا اسم مضيف قاعدة بيانات ولا عدد اتصالات ولا أي
+  // تفصيل عن البنية التحتية. ما هنا يكفي المراقب ولا يفيد المهاجم.
   app.get('/health', async (req, res) => {
+    const base = {
+      service: 'muthbit-api',
+      env: env.env,
+      version: pkg.version,
+      uptime_seconds: Math.round(process.uptime())
+    };
     try {
       await db.raw('select 1');
-      res.json({ status: 'ok', service: 'muthbit-api', env: env.env });
+      res.json({ status: 'ok', ...base });
     } catch (e) {
-      res.status(503).json({ status: 'degraded', database: 'unreachable' });
+      res.status(503).json({ status: 'degraded', ...base });
     }
   });
 

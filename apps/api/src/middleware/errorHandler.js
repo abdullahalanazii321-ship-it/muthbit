@@ -1,6 +1,7 @@
 'use strict';
 const { AppError } = require('../utils/errors');
 const env = require('../config/env');
+const sentry = require('../utils/sentry');
 
 function notFoundHandler(req, res) {
   res.status(404).json({ error: { code: 'not_found', message: 'المسار غير موجود.' } });
@@ -26,8 +27,13 @@ function errorHandler(err, req, res, next) {
     });
   }
 
+  // الفرع الأخير وحده يُرسَل إلى التتبّع: ما وصل إلى هنا خطأ لم نتوقّعه.
+  // ما فوقه (AppError · 23505 · 23514) أخطاء مقصودة — سقف مُنع، صلاحية رُفضت،
+  // قيمة مكررة — وإرسالها يغرق التتبّع بضجيج يخفي الأعطال الحقيقية.
   // eslint-disable-next-line no-console
   console.error('[muthbit] unhandled error:', err);
+  sentry.captureUnexpected(err, req);
+
   return res.status(500).json({
     error: {
       code: 'internal_error',
