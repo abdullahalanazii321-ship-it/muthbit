@@ -697,6 +697,26 @@ async function run() {
         supplierAfter.body.error.code === 'rate_limited',
       { company: companyAttempts.map((r) => r.status), supplier: supplierAfter.status }
     );
+
+    // مفتاح الوكيل: الكلفة لا التخمين. عشرون محاولة فاشلة ثم الحجب.
+    let lastKeyAttempt;
+    for (let attempt = 1; attempt <= 21; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      lastKeyAttempt = await request(app).get('/api/requests').set('X-API-Key', `bogus-key-${attempt}`);
+    }
+    check(
+      'المحاولة الحادية والعشرون بمفتاح وكيل غير صالح تُحجب',
+      lastKeyAttempt.status === 429 && lastKeyAttempt.body.error.code === 'rate_limited',
+      { status: lastKeyAttempt.status, body: lastKeyAttempt.body }
+    );
+
+    // الحد لا يُعدّ إلا ما حمل الرأس: جلسة عادية برمز Bearer لا تتأثر بحجب المفاتيح.
+    const sessionAfterBlock = await request(app).get('/api/requests').set(auth(buyer.token));
+    check(
+      'حد مفتاح الوكيل لا يمس جلسة عادية برمز Bearer',
+      sessionAfterBlock.status === 200,
+      { status: sessionAfterBlock.status }
+    );
   } finally {
     setLimitsEnabledForTests(false);
   }

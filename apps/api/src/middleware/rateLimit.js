@@ -43,14 +43,26 @@ function buildHandler(windowMs, messageAr) {
   };
 }
 
-function createLimiter({ windowMs, limit, messageAr, skipSuccessfulRequests = false }) {
+/**
+ * appliesTo: يقصر المحدد على طلبات بعينها؛ ما عداها لا يُعدّ أصلاً.
+ * requestWasSuccessful: يعرّف «المحاولة الناجحة» التي تُستردّ مع skipSuccessfulRequests.
+ */
+function createLimiter({
+  windowMs,
+  limit,
+  messageAr,
+  skipSuccessfulRequests = false,
+  appliesTo = null,
+  requestWasSuccessful = null
+}) {
   return rateLimit({
     windowMs,
     limit,
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests,
-    skip: skipInTestEnv,
+    skip: (req, res) => skipInTestEnv() || (appliesTo ? !appliesTo(req, res) : false),
+    ...(requestWasSuccessful ? { requestWasSuccessful } : {}),
     handler: buildHandler(windowMs, messageAr)
   });
 }
@@ -76,10 +88,32 @@ const loginLimiter = createLimiter({
  * لا يجد خمساً أخرى على الآخر. الحد على الفعل — إنشاء حساب — لا على المسار.
  * يمنع إغراق قاعدة البيانات بشركات وموردين وهميين.
  */
-const registerLimiter = createLimiter({
+const accountCreationLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
   messageAr: GENERIC_MESSAGE
+});
+
+/**
+ * مفتاح الوكيل الذكي: ٢٠ محاولة فاشلة في ١٥ دقيقة.
+ *
+ * السبب كلفة المعالج لا تخمين المفتاح: كل مفتاح تطابق بادئته وكيلاً نشطاً يكلّف
+ * `bcrypt.compare` كاملة (BCRYPT_ROUNDS=12)، وخادم Render المجاني بـ 0.1 CPU.
+ * ترك ذلك عند الحد العام (١٢٠/دقيقة) يعني أن من يملك الرابط يشغل المعالج فيوقف المنصة
+ * عن كل مستخدميها — حرمان من الخدمة لا مجرد تخمين.
+ *
+ * appliesTo: لا يُعدّ إلا ما حمل الرأس فعلاً، فلا تستهلكه جلسة منتهية برمز Bearer.
+ * requestWasSuccessful: المحاولة «الفاشلة» هي 401 وحدها — أي مفتاح مرفوض.
+ * ما عداها (٤٠٣ صلاحية · ٤٢٢ سياسة · نجاح) مرّ من المصادقة ولا يُحسب،
+ * فالوكيل الشرعي الذي تمنعه السياسة مراراً لا يُحبس بذنب ليس ذنبه.
+ */
+const agentKeyLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  messageAr: 'محاولات كثيرة بمفتاح وكيل غير صالح. انتظر ١٥ دقيقة ثم أعد المحاولة.',
+  skipSuccessfulRequests: true,
+  appliesTo: (req) => Boolean(req.headers['x-api-key']),
+  requestWasSuccessful: (req, res) => res.statusCode !== 401
 });
 
 /** سقف عام لكل ما تحت /api: ١٢٠ طلباً في الدقيقة. لا يشمل /health. */
@@ -89,4 +123,10 @@ const apiLimiter = createLimiter({
   messageAr: GENERIC_MESSAGE
 });
 
-module.exports = { loginLimiter, registerLimiter, apiLimiter, setLimitsEnabledForTests };
+module.exports = {
+  loginLimiter,
+  accountCreationLimiter,
+  agentKeyLimiter,
+  apiLimiter,
+  setLimitsEnabledForTests
+};

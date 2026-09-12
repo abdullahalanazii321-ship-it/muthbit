@@ -6,7 +6,7 @@ const morgan = require('morgan');
 const env = require('./config/env');
 const db = require('./db/knex');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const { loginLimiter, registerLimiter, apiLimiter } = require('./middleware/rateLimit');
+const { loginLimiter, accountCreationLimiter, agentKeyLimiter, apiLimiter } = require('./middleware/rateLimit');
 
 const authRoutes = require('./routes/auth.routes');
 const companiesRoutes = require('./routes/companies.routes');
@@ -38,12 +38,15 @@ function createApp() {
   // الحدود تُركَّب بعد /health وقبل مسارات /api: أدوات المراقبة تنادي /health كل دقيقة،
   // وحظره يعني إنذاراً كاذباً بأن المنصة سقطت.
   app.use('/api', apiLimiter);
+  // مفتاح الوكيل يُجرَّب على أي مسار، فحدّه يُركَّب على /api كله ولا يَعُدّ
+  // إلا ما حمل الرأس X-API-Key فعلاً.
+  app.use('/api', agentKeyLimiter);
   // المسارات العامة الثلاثة التي لا تحميها مصادقة تحمل حدّاً أضيق فوق الحد العام.
   app.post('/api/auth/login', loginLimiter);
-  // نسخة واحدة من registerLimiter على مساري الإنشاء معاً — عدّاد واحد مشترك،
+  // نسخة واحدة من accountCreationLimiter على مساري الإنشاء معاً — عدّاد واحد مشترك،
   // فالحد على «إنشاء حساب جديد» من هذا العنوان أياً كان نوعه، ولا يُضاعَف بالتنقل بين المسارين.
-  app.post('/api/auth/register-company', registerLimiter);
-  app.post('/api/suppliers/register', registerLimiter);
+  app.post('/api/auth/register-company', accountCreationLimiter);
+  app.post('/api/suppliers/register', accountCreationLimiter);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/companies', companiesRoutes);
