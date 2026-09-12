@@ -69,7 +69,13 @@ const loginLimiter = createLimiter({
   skipSuccessfulRequests: true
 });
 
-/** تسجيل مورد: ٥ في الساعة — يمنع إغراق قاعدة البيانات بموردين وهميين. */
+/**
+ * إنشاء حساب جديد: ٥ في الساعة.
+ * نسخة واحدة تُركَّب على `POST /api/auth/register-company` و `POST /api/suppliers/register` معاً،
+ * فالمخزن والمفتاح (IP) واحد والعدّاد مشترك بينهما: من استنفد الخمس على أحدهما
+ * لا يجد خمساً أخرى على الآخر. الحد على الفعل — إنشاء حساب — لا على المسار.
+ * يمنع إغراق قاعدة البيانات بشركات وموردين وهميين.
+ */
 const registerLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,

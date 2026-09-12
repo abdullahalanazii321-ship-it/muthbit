@@ -38,8 +38,11 @@ function createApp() {
   // الحدود تُركَّب بعد /health وقبل مسارات /api: أدوات المراقبة تنادي /health كل دقيقة،
   // وحظره يعني إنذاراً كاذباً بأن المنصة سقطت.
   app.use('/api', apiLimiter);
-  // المساران العامان اللذان لا تحميهما مصادقة يحملان حدّاً أضيق فوق الحد العام.
+  // المسارات العامة الثلاثة التي لا تحميها مصادقة تحمل حدّاً أضيق فوق الحد العام.
   app.post('/api/auth/login', loginLimiter);
+  // نسخة واحدة من registerLimiter على مساري الإنشاء معاً — عدّاد واحد مشترك،
+  // فالحد على «إنشاء حساب جديد» من هذا العنوان أياً كان نوعه، ولا يُضاعَف بالتنقل بين المسارين.
+  app.post('/api/auth/register-company', registerLimiter);
   app.post('/api/suppliers/register', registerLimiter);
 
   app.use('/api/auth', authRoutes);

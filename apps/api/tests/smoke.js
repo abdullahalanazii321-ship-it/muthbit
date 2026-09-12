@@ -7,6 +7,12 @@
  *
  * التشغيل:  npm run reset && npm test   (داخل apps/api)
  */
+// يجب أن يسبق كل require: الإعدادات تُقرأ لحظة التحميل، و.env يضبط NODE_ENV=development
+// ودوتإنف لا يتجاوز متغيّراً مضبوطاً مسبقاً. بدون هذا السطر تظن الشيفرة أنها في التطوير،
+// فتبقى محددات المعدل فعّالة طوال الفحوص وتسقطها عشوائياً حين يطول السيناريو.
+// knexfile.test هو knexfile.development نفسه — القاعدة واحدة ولا شيء يتغيّر غير هذا.
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
 const request = require('supertest');
 const createApp = require('../src/app');
 const db = require('../src/db/knex');
@@ -674,6 +680,23 @@ async function run() {
     // أدوات المراقبة تنادي /health كل دقيقة: حجبه إنذار كاذب بأن المنصة سقطت.
     const health = await request(app).get('/health');
     check('/health بعد تجاوز الحد ما زال 200', health.status === 200, { status: health.status });
+
+    // عدّاد الإنشاء واحد بين المسارين: خمس محاولات على تسجيل الشركة تستنفد نصيب
+    // تسجيل المورد أيضاً، فلا يحصل أحد على عشر محاولات بالتنقل بينهما.
+    // الأجسام ناقصة عمداً (400): الحد يُحسب قبل التحقق، فلا يُكتب شيء في قاعدة البيانات.
+    const companyAttempts = [];
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      companyAttempts.push(await request(app).post('/api/auth/register-company').send({}));
+    }
+    const supplierAfter = await request(app).post('/api/suppliers/register').send({});
+    check(
+      'عدّاد إنشاء الحساب مشترك بين تسجيل الشركة وتسجيل المورد',
+      companyAttempts.every((r) => r.status === 400) &&
+        supplierAfter.status === 429 &&
+        supplierAfter.body.error.code === 'rate_limited',
+      { company: companyAttempts.map((r) => r.status), supplier: supplierAfter.status }
+    );
   } finally {
     setLimitsEnabledForTests(false);
   }
