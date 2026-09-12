@@ -47,20 +47,56 @@ if ($null -eq $candidate) {
 
 Write-Host "الملف المقروء: $($candidate.Name)  —  نُزّل في $($candidate.LastWriteTime)" -ForegroundColor Cyan
 
-# ————— ٣. استخراج سطر DATABASE_URL —————
-$downloaded = Get-Content -LiteralPath $candidate.FullName -Raw -Encoding UTF8
-$match = [regex]::Match($downloaded, '(?m)^\s*(?:export\s+)?DATABASE_URL\s*=\s*(?<value>.+?)\s*$')
-if (-not $match.Success) {
-    Stop-WithMessage "الملف «$($candidate.Name)» لا يحتوي على سطر DATABASE_URL. تأكد أنك نزّلت ملف الـ env الصحيح."
+# ————— ٣. استخراج رابط الاتصال —————
+# لا نشترط اسم متغيّر بعينه: Neon يغيّر التسمية بين نوافذ التنزيل.
+# القاعدة: أول سطر قيمته تبدأ بـ postgres:// أو postgresql:// أياً كان اسمه.
+
+function Get-CleanValue([string]$Raw) {
+    $v = $Raw.Trim()
+    # Neon قد يغلّف القيمة بعلامتي اقتباس — تُنزع قبل أي فحص.
+    if ($v.Length -ge 2) {
+        if (($v.StartsWith('"') -and $v.EndsWith('"')) -or ($v.StartsWith("'") -and $v.EndsWith("'"))) {
+            $v = $v.Substring(1, $v.Length - 2).Trim()
+        }
+    }
+    return $v
 }
 
-$url = $match.Groups['value'].Value.Trim()
-# Neon قد يغلّف القيمة بعلامتي اقتباس — تُنزع قبل أي شيء آخر.
-if ($url.Length -ge 2) {
-    if (($url.StartsWith('"') -and $url.EndsWith('"')) -or ($url.StartsWith("'") -and $url.EndsWith("'"))) {
-        $url = $url.Substring(1, $url.Length - 2).Trim()
+$lines = Get-Content -LiteralPath $candidate.FullName -Encoding UTF8
+$url = $null
+$foundName = $null
+
+foreach ($line in $lines) {
+    $text = $line.Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) { continue }
+    if ($text.StartsWith('#')) { continue }
+
+    # الرابط المجرّد بلا اسم يُفحص أولاً: معاملاته تحوي علامة = فتخدع محلّل «اسم=قيمة».
+    $bare = Get-CleanValue $text
+    if ($bare -match '^postgres(ql)?://') {
+        $url = $bare
+        $foundName = '(رابط مجرّد بلا اسم متغيّر)'
+        break
+    }
+
+    # اسم المتغيّر مقيّد بحروف ويُبدأ بحرف أو شرطة سفلية، فلا يُلتقط رابط بالخطأ كأنه اسم.
+    $eq = [regex]::Match($text, '^(?:export\s+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<value>.*)$')
+    if ($eq.Success) {
+        $value = Get-CleanValue $eq.Groups['value'].Value
+        if ($value -match '^postgres(ql)?://') {
+            $url = $value
+            $foundName = $eq.Groups['name'].Value
+            break
+        }
     }
 }
+
+if ($null -eq $url) {
+    Stop-WithMessage "الملف «$($candidate.Name)» لا يحتوي على أي سطر قيمته رابط اتصال يبدأ بـ postgres:// أو postgresql://. في Neon اختر صيغة تعطي الرابط كاملاً (Connection string أو ملف .env فيه DATABASE_URL) — لا صيغة تفصل اسم المستخدم وكلمة المرور في حقلين."
+}
+
+# اسم الحقل فقط — لا قيمته.
+Write-Host "الحقل المستعمل: $foundName" -ForegroundColor Cyan
 
 # ————— ٤. حذف channel_binding —————
 # node-postgres يرفض هذا المعامل، فوجوده يعني فشل كل اتصال.
@@ -75,8 +111,8 @@ $url = $url -replace '\?&', '?'
 
 # ————— ٥. التحقق قبل الكتابة —————
 # لا يُكتب شيء قبل أن تثبت القيمة أنها رابط اتصال فعلي بطول معقول.
-if (-not $url.StartsWith('postgresql://')) {
-    Stop-WithMessage 'القيمة المستخرجة لا تبدأ بـ postgresql:// — لن أكتبها.'
+if (-not ($url -match '^postgres(ql)?://')) {
+    Stop-WithMessage 'القيمة المستخرجة لا تبدأ بـ postgres:// ولا بـ postgresql:// — لن أكتبها.'
 }
 if ($url.Length -lt 40 -or $url.Length -gt 600) {
     Stop-WithMessage "طول القيمة المستخرجة ($($url.Length) محرفاً) غير معقول لرابط اتصال — لن أكتبها."
