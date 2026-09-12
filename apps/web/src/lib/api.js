@@ -61,6 +61,9 @@ export async function apiFetch(path, options = {}) {
   // و401 فيه يعني بيانات خاطئة يجب أن تظهر رسالتها لا أن نحوّل المستخدم.
   if (response.status === 401 && token) sessionBridge.onExpired();
 
+  // 429 = تجاوز حد المعدل. رسالته عربية من الخادم وتمر كما هي أدناه،
+  // ولا إعادة محاولة تلقائية هنا ولا في أي نداء — إعادة المحاولة عند الحد تزيد الطين بلة.
+
   throw new ApiError({
     status: response.status,
     code: envelope.code,

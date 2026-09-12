@@ -14,12 +14,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  // 429: الخادم حجب المحاولات لكثرتها. نعطّل الزر ونكتفي برسالته —
+  // لا مؤقّت تنازلي ولا إعادة محاولة تلقائية.
+  const [rateLimited, setRateLimited] = useState(false);
 
   const isEmpty = email.trim() === '' || password === '';
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (isEmpty || submitting) return;
+    if (isEmpty || submitting || rateLimited) return;
 
     setSubmitting(true);
     setError(null);
@@ -33,6 +36,7 @@ export default function LoginPage() {
       navigate(homeFor(normalizeUser(data.user)), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
+      if (err?.status === 429) setRateLimited(true);
       setSubmitting(false);
     }
   }
@@ -68,7 +72,7 @@ export default function LoginPage() {
 
           {error && <Alert>{error}</Alert>}
 
-          <Button type="submit" disabled={isEmpty} loading={submitting} loadingText="جارٍ التحقق…">
+          <Button type="submit" disabled={isEmpty || rateLimited} loading={submitting} loadingText="جارٍ التحقق…">
             تسجيل الدخول
           </Button>
         </form>

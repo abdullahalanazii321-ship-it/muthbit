@@ -10,6 +10,7 @@
 const request = require('supertest');
 const createApp = require('../src/app');
 const db = require('../src/db/knex');
+const { setLimitsEnabledForTests } = require('../src/middleware/rateLimit');
 
 const app = createApp();
 const PASSWORD = 'Test@1234';
@@ -644,6 +645,38 @@ async function run() {
     rejectOk.status === 200 && rejectOk.body.request.status === 'rejected',
     { select: rejectSelect.status, status: rejectOk.status }
   );
+
+  section('١٨ — تحديد معدل الطلبات');
+
+  // المحددات معطّلة في بيئة الاختبار لأن ما سبق يسجّل دخول عشرات المرات في ثوانٍ.
+  // هذا الفحص وحده يفتحها ثم يغلقها في finally، فلا يتأثر به غيره.
+  setLimitsEnabledForTests(true);
+  try {
+    let lastAttempt;
+    for (let attempt = 1; attempt <= 11; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      lastAttempt = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'admin@buyer-demo.sa', password: 'wrong-password' });
+    }
+    check(
+      'المحاولة الحادية عشرة تُحجب بـ 429 ورمزها rate_limited',
+      lastAttempt.status === 429 && lastAttempt.body.error && lastAttempt.body.error.code === 'rate_limited',
+      { status: lastAttempt.status, body: lastAttempt.body }
+    );
+
+    check(
+      'رد الحجب يحمل رأس RateLimit-Remaining',
+      lastAttempt.headers['ratelimit-remaining'] !== undefined,
+      { remaining: lastAttempt.headers['ratelimit-remaining'] }
+    );
+
+    // أدوات المراقبة تنادي /health كل دقيقة: حجبه إنذار كاذب بأن المنصة سقطت.
+    const health = await request(app).get('/health');
+    check('/health بعد تجاوز الحد ما زال 200', health.status === 200, { status: health.status });
+  } finally {
+    setLimitsEnabledForTests(false);
+  }
 
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);

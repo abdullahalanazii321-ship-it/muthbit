@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const env = require('./config/env');
 const db = require('./db/knex');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
+const { loginLimiter, registerLimiter, apiLimiter } = require('./middleware/rateLimit');
 
 const authRoutes = require('./routes/auth.routes');
 const companiesRoutes = require('./routes/companies.routes');
@@ -33,6 +34,13 @@ function createApp() {
       res.status(503).json({ status: 'degraded', database: 'unreachable' });
     }
   });
+
+  // الحدود تُركَّب بعد /health وقبل مسارات /api: أدوات المراقبة تنادي /health كل دقيقة،
+  // وحظره يعني إنذاراً كاذباً بأن المنصة سقطت.
+  app.use('/api', apiLimiter);
+  // المساران العامان اللذان لا تحميهما مصادقة يحملان حدّاً أضيق فوق الحد العام.
+  app.post('/api/auth/login', loginLimiter);
+  app.post('/api/suppliers/register', registerLimiter);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/companies', companiesRoutes);
