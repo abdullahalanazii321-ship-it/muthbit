@@ -9,10 +9,11 @@ const light = {
   muted: '#5C6B66',
   line: '#D2D9D4',
   lineStrong: '#B7C2BC',
-  seal: '#0B5F52',
+  seal: '#0B4F4A',
   sealSoft: '#DDE9E4',
   signal: '#B2551B',
-  signalSoft: '#F0E3D8'
+  signalSoft: '#F0E3D8',
+  logoAccent: '#12857A'
 };
 
 const dark = {
@@ -26,7 +27,8 @@ const dark = {
   seal: '#54C3A8',
   sealSoft: '#16302A',
   signal: '#E19257',
-  signalSoft: '#2C2118'
+  signalSoft: '#2C2118',
+  logoAccent: '#3FC4B2'
 };
 
 const fonts = {

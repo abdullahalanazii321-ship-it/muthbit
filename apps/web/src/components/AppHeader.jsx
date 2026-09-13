@@ -3,6 +3,7 @@ import { useSession } from '../lib/session.js';
 import { canViewAudit, canViewPlatform, canViewTeam, homeFor } from '../lib/access.js';
 import { roleLabel } from '../lib/labels.js';
 import Button from './Button.jsx';
+import Logo from './Logo.jsx';
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal';
 
@@ -26,8 +27,14 @@ export default function AppHeader() {
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-3">
         <div className="flex flex-wrap items-center gap-6">
-          <Link to={homeFor(session.user)} className={`rounded-sm font-display text-lg font-semibold text-ink ${focusRing}`}>
-            منصة مثبت
+          {/* القفلة الأفقية: في RTL أول عنصر في الصف هو الأيمن، فالرمز يقع في أقصى اليمين ثم الاسم.
+              aria-hidden على الرمز لأن «مثبت» مكتوبة بجانبه — وإلا نُطقت مرتين. */}
+          <Link
+            to={homeFor(session.user)}
+            className={`flex items-center gap-2 rounded-sm font-display text-lg font-semibold text-ink ${focusRing}`}
+          >
+            <Logo size={28} aria-hidden="true" />
+            مثبت
           </Link>
           {(showPlatform || showTeam || showAudit) && (
             <nav aria-label="التنقل الرئيسي" className="flex flex-wrap items-center gap-5">

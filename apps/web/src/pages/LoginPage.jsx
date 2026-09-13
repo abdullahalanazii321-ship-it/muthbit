@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { normalizeUser, useSession } from '../lib/session.js';
 import { homeFor } from '../lib/access.js';
+import Logo from '../components/Logo.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
@@ -44,8 +45,13 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
-        <p className="text-sm text-muted">منصة مثبت</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-ink">تسجيل الدخول</h1>
+        {/* القفلة الرأسية: الرمز ثم الاسم تحته.
+            aria-hidden على الرمز لأن الاسم مكتوب تحته نصاً مرئياً، وبدونها يُنطق «مثبت» مرتين. */}
+        <div className="mb-6 flex flex-col items-start gap-2">
+          <Logo size={64} aria-hidden="true" />
+          <span className="font-display text-xl font-semibold text-ink">مثبت</span>
+        </div>
+        <h1 className="font-display text-2xl font-semibold text-ink">تسجيل الدخول</h1>
 
         {/* noValidate: فقاعة تحقق المتصفح تظهر بلغته، ونريد رسالة الخادم العربية بدلها. */}
         <form noValidate onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">

@@ -23,7 +23,8 @@ module.exports = {
         seal: 'var(--mb-seal)',
         'seal-soft': 'var(--mb-seal-soft)',
         signal: 'var(--mb-signal)',
-        'signal-soft': 'var(--mb-signal-soft)'
+        'signal-soft': 'var(--mb-signal-soft)',
+        'logo-accent': 'var(--mb-logo-accent)'
       },
       fontFamily: {
         display: ['Noto Kufi Arabic', 'Archivo', 'system-ui', 'sans-serif'],
