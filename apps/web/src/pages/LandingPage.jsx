@@ -1,9 +1,20 @@
-import { Link } from 'react-router-dom';
+import { createContext, useContext, useEffect, useLayoutEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
+import {
+  DEFAULT_LANG,
+  LANGS,
+  LANG_PARAM,
+  applyEnglishDocument,
+  readStoredLang,
+  storeLang,
+  withLang
+} from '../lib/landingLanguage.js';
 
 /**
  * صفحة التعريف العامة على /: يراها الزائر قبل أن يُطلب منه حساب، وصاحب الجلسة لا يراها (App.jsx يحوّله).
  * داكنة ثابتة بألوان --mb-mkt-* في tokens.css لا تتبع وضع النظام، والمنصة خلف الدخول تبقى فاتحة.
+ * بلغتين، وهي وحدها كذلك: الإنجليزية لمن يُرسَل إليه ?lang=en من خارج السعودية. المنصة عربية دائماً.
  * النصوص من التصميم المعتمد حرفياً — لا تُعاد صياغتها ولا يُضاف إليها.
  * لا Button من المنصة هنا: ألوانه وحلقة تركيزه للأرضية الفاتحة ولا تُقرأ على الداكن.
  */
@@ -13,142 +24,393 @@ const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mkt-mint';
 const textLink = `rounded-sm text-mkt-muted transition-colors hover:text-mkt-paper ${focusRing}`;
 
-const SECTION_LINKS = [
-  { href: '#features', label: 'المميزات' },
-  { href: '#parties', label: 'الأطراف' },
-  { href: '#how', label: 'كيف تعمل' }
-];
+// معرّفات الأقسام واحدة في اللغتين، فروابط التمرير لا تتغيّر بالتبديل.
+const SECTION_IDS = ['features', 'parties', 'how'];
 
-const STATS = [
-  { value: 'لا يُعدَّل', label: 'سجل التدقيق' },
-  { value: '7 أدوار', label: 'صلاحيات محدّدة' },
-  { value: '0', label: 'مورد بلا تحقّق' }
-];
+/**
+ * خطوط العناوين.
+ * العربية: Noto Kufi Arabic كما في المنصة.
+ * الإنجليزية: Noto Kufi Arabic تغطيته اللاتينية ضعيفة، ولا خط لاتيني للعناوين محمّل في tokens.css
+ * (Archivo مذكور بديلاً لكنه غير مستورد) — فالعناوين بخط النصوص IBM Plex Sans Arabic، ولاتينيته كاملة،
+ * بأثقل وزن محمّل منه: 600. طلب 700 يجعل المتصفح يرسمه عريضاً مصطنعاً.
+ */
+const TYPE = {
+  ar: { heading: 'font-display font-bold', strong: 'font-display font-semibold' },
+  en: { heading: 'font-body font-semibold', strong: 'font-body font-semibold' }
+};
 
-const PROBLEMS = [
-  {
-    icon: 'warning',
-    title: 'شراء فوق الصلاحية',
-    text: 'موظف يوقّع التزاماً يتجاوز ما يملك، ولا أحد يعلم إلا بعد وصول الفاتورة. الحدّ موجود على الورق فقط، ولا شيء يفرضه لحظة الشراء.'
+const COPY = {
+  ar: {
+    dir: 'rtl',
+    brand: 'مثبت',
+    toggle: { text: 'EN', label: 'English', lang: 'en' },
+    nav: { label: 'أقسام الصفحة', signIn: 'تسجيل الدخول' },
+    sections: { features: 'المميزات', parties: 'الأطراف', how: 'كيف تعمل' },
+    hero: {
+      chip: 'منصة مشتريات موثّقة',
+      lines: ['الشراء يمرّ', 'بقواعد شركتك', 'لا من حولها.'],
+      lede: 'مثبت تضع سقف الإنفاق لكل مشترٍ، وتُلزم كل طلب بموافقة من غير صاحبه، وتكتب كل خطوة في سجل لا يقبل التعديل — وتفتح الباب لموردين لا يظهرون قبل التحقق منهم.',
+      primary: 'أنشئ حساب شركتك ←',
+      secondary: 'لديك حساب؟ دخول',
+      stats: [
+        { value: 'لا يُعدَّل', label: 'سجل التدقيق' },
+        { value: '7 أدوار', label: 'صلاحيات محدّدة' },
+        { value: '0', label: 'مورد بلا تحقّق' }
+      ]
+    },
+    chips: { log: 'سجل ملحق فقط', built: 'مبنيّة لإدارة المشتريات' },
+    problems: {
+      eyebrow: 'لماذا مثبت',
+      title: 'ثلاث ثغرات تتكرّر في كل شركة تشتري',
+      lead: 'لا واحدة منها تُحلّ بجدول إكسل ولا بمجموعة واتساب.',
+      items: [
+        {
+          icon: 'warning',
+          title: 'شراء فوق الصلاحية',
+          text: 'موظف يوقّع التزاماً يتجاوز ما يملك، ولا أحد يعلم إلا بعد وصول الفاتورة. الحدّ موجود على الورق فقط، ولا شيء يفرضه لحظة الشراء.'
+        },
+        {
+          icon: 'message',
+          title: 'موافقة بلا أثر',
+          text: 'القرار يُعطى شفهياً أو في رسالة تُمسح. وعند الخلاف لا يوجد ما يُثبت من وافق، على أي مبلغ، ومتى — فيتحوّل النقاش إلى ذاكرة ضدّ ذاكرة.'
+        },
+        {
+          icon: 'search',
+          title: 'مورد لم يتحقّق منه أحد',
+          text: 'يُختار لأن أحدهم يعرفه، لا لأن منشأته رُوجعت. أول اختبار حقيقي يأتي بعد الدفع، وهو أغلى وقت يمكن أن يُكتشف فيه الخطأ.'
+        }
+      ]
+    },
+    features: {
+      title: 'قواعد الشركة تُطبَّق، لا تُشرح',
+      lead: 'من إنشاء الطلب حتى صدور أمر الشراء — كل خطوة محكومة ومكتوبة.',
+      items: [
+        {
+          icon: 'ceiling',
+          title: 'سقف لكل مشترٍ',
+          text: 'مبلغ للطلب الواحد، وسقف شهري، وفئات مسموحة. ومن لم يُضبط له سقف لا يستطيع الشراء أصلاً — الإغلاق هو الوضع الافتراضي.'
+        },
+        {
+          icon: 'approval',
+          title: 'موافقة لا تُتجاوز',
+          text: 'تجاوز سقف الطلب يُرفع لصاحب صلاحية أعلى، وتجاوز السقف الشهري يُمنع منعاً قاطعاً. ولا يعتمد أحد طلباً أنشأه بنفسه.'
+        },
+        {
+          icon: 'ledger',
+          title: 'سجل لا يُعدَّل',
+          text: 'كل حدث يُكتب مرة واحدة ولا يُمسّ بعدها. قاعدة البيانات نفسها ترفض أي تعديل أو حذف — لا اعتماداً على انضباط المستخدمين.'
+        },
+        {
+          icon: 'shield',
+          title: 'موردون موثّقون',
+          text: 'المورد لا يظهر للشركات ولا يقدّم عرضاً قبل مراجعة منشأته واعتماد فئاته. والعرض الناقص لا يصل المشتري إطلاقاً.'
+        }
+      ]
+    },
+    parties: {
+      title: 'كل دور يرى ما يخصّه، ولا شيء سواه',
+      lead: 'صلاحيات مفصولة تحمي الشركة وتحفظ حقّ المورد في الوقت نفسه.',
+      items: [
+        {
+          icon: 'company',
+          title: 'الشركات المشترية',
+          points: [
+            'سقوف إنفاق تُضبط لكل موظف على حدة',
+            'مقارنة العروض بسعر وضمان ومدة تسليم',
+            'سجل كامل يصلح للمراجعة الداخلية والخارجية'
+          ]
+        },
+        {
+          icon: 'supplier',
+          title: 'الموردون',
+          points: [
+            'طلبات حقيقية في فئاتك المعتمدة وحدها',
+            'منافسة على السعر والضمان لا على المعرفة',
+            'حالة عرضك ظاهرة لك دائماً: مُقدَّم، أو مُختار، أو مسحوب'
+          ]
+        },
+        {
+          icon: 'audit',
+          title: 'المالية والمراجعة',
+          points: [
+            'اعتماد أو رفض بسبب مكتوب يبقى في السجل',
+            'المنصة توقف تجاوز السقف الشهري لحظة القرار، وتقول المبلغ والسقف بالرقم',
+            'تتبّع كل مبلغ إلى الطلب والعرض والقرار'
+          ]
+        }
+      ]
+    },
+    how: {
+      title: 'أربع خطوات، ولا خطوة خارج المنصة',
+      lead: 'دورة واحدة يفهمها الجميع، وتنتهي بأمر شراء موثّق.',
+      steps: [
+        { title: 'المشتري يطلب', text: 'يكتب الصنف والكمية والفئة. المنصة تتحقّق من سقفه قبل أن تقبل الطلب.' },
+        { title: 'الموردون يعرضون', text: 'يصل الطلب لموردي الفئة الموثّقين، ويقدّم كل واحد سعره وضمانه ومدته.' },
+        { title: 'المعتمِد يقرّر', text: 'يُختار العرض ويُرفع للاعتماد. صاحب الطلب لا يعتمده، والسبب يُكتب.' },
+        { title: 'أمر الشراء يصدر', text: 'يصدر بمرجع دائم، ويبقى الطريق كاملاً من الطلب إليه مقروءاً في السجل.' }
+      ],
+      rules: [
+        { title: 'تجاوز سقف الطلب', text: 'يُرفع لصاحب صلاحية أعلى، لا يُمنع.' },
+        { title: 'تجاوز السقف الشهري', text: 'يُمنع. لا أحد يعتمد فوق ميزانية الشهر.' },
+        { title: 'فئة غير مسموحة', text: 'يُمنع. السقف لا يمتدّ خارج فئاته.' }
+      ]
+    },
+    cta: {
+      title: 'جاهز تُدخل مشترياتك تحت قواعدك؟',
+      text: 'أنشئ حساب شركتك اليوم، أو سجّل منشأتك كمورد. المراجعة تسبق التفعيل — ولهذا السبب بالذات يثق بها الطرف الآخر.',
+      primary: 'أنشئ حساب شركتك ←',
+      secondary: 'سجّل منشأتك كمورد'
+    },
+    footer: {
+      label: 'روابط التذييل',
+      tagline: 'منصة مشتريات موثّقة للشركات السعودية',
+      createAccount: 'إنشاء حساب',
+      signIn: 'تسجيل الدخول',
+      copyright: '© 2026 مثبت. جميع الحقوق محفوظة.',
+      madeIn: 'صُمّمت في المملكة العربية السعودية'
+    }
   },
-  {
-    icon: 'message',
-    title: 'موافقة بلا أثر',
-    text: 'القرار يُعطى شفهياً أو في رسالة تُمسح. وعند الخلاف لا يوجد ما يُثبت من وافق، على أي مبلغ، ومتى — فيتحوّل النقاش إلى ذاكرة ضدّ ذاكرة.'
-  },
-  {
-    icon: 'search',
-    title: 'مورد لم يتحقّق منه أحد',
-    text: 'يُختار لأن أحدهم يعرفه، لا لأن منشأته رُوجعت. أول اختبار حقيقي يأتي بعد الدفع، وهو أغلى وقت يمكن أن يُكتشف فيه الخطأ.'
+
+  en: {
+    dir: 'ltr',
+    brand: 'Muthbit',
+    toggle: { text: 'ع', label: 'العربية', lang: 'ar' },
+    nav: { label: 'Page sections', signIn: 'Sign in' },
+    sections: { features: 'Features', parties: 'Who it serves', how: 'How it works' },
+    meta: {
+      title: 'Muthbit — Verified procurement for Saudi companies',
+      description:
+        'Muthbit sets a spending ceiling for every buyer, requires every request to be approved by someone other than its author, and writes every step into a log that cannot be edited — with suppliers who do not appear until they have been verified.'
+    },
+    hero: {
+      chip: 'Verified procurement platform',
+      lines: ['Purchasing that runs', 'through your rules', 'not around them.'],
+      lede: 'Muthbit sets a spending ceiling for every buyer, requires every request to be approved by someone other than its author, and writes every step into a log that cannot be edited — with suppliers who do not appear until they have been verified.',
+      primary: 'Create your company account →',
+      secondary: 'Already have an account? Sign in',
+      stats: [
+        { value: 'Append-only', label: 'audit log' },
+        { value: '7 roles', label: 'scoped permissions' },
+        { value: '0', label: 'unverified suppliers' }
+      ]
+    },
+    chips: { log: 'Append-only log', built: 'Built for procurement' },
+    problems: {
+      eyebrow: 'Why Muthbit',
+      title: 'Three gaps that repeat in every company that buys',
+      lead: 'Not one of them is solved by a spreadsheet or a group chat.',
+      items: [
+        {
+          icon: 'warning',
+          title: 'Spending beyond authority',
+          text: 'An employee signs a commitment larger than their limit, and nobody finds out until the invoice arrives. The limit exists on paper, and nothing enforces it at the moment of purchase.'
+        },
+        {
+          icon: 'message',
+          title: 'Approval without a trace',
+          text: 'The decision is given verbally, or in a message that gets deleted. When a dispute arises there is nothing to prove who approved what, for how much, and when — so it becomes one memory against another.'
+        },
+        {
+          icon: 'search',
+          title: 'A supplier nobody checked',
+          text: 'Chosen because someone knows them, not because their business was reviewed. The first real test comes after payment, which is the most expensive moment to discover a mistake.'
+        }
+      ]
+    },
+    features: {
+      title: 'Company rules are enforced, not explained',
+      lead: 'From the moment a request is created to the moment a purchase order is issued — every step is governed and written down.',
+      items: [
+        {
+          icon: 'ceiling',
+          title: 'A ceiling for every buyer',
+          text: 'A per-request amount, a monthly ceiling, and permitted categories. Anyone without a configured ceiling cannot buy at all — closed is the default.'
+        },
+        {
+          icon: 'approval',
+          title: 'Approval that cannot be bypassed',
+          text: 'Exceeding the per-request ceiling escalates to a higher authority; exceeding the monthly ceiling is blocked outright. And nobody approves a request they created themselves.'
+        },
+        {
+          icon: 'ledger',
+          title: 'A log that cannot be edited',
+          text: 'Every event is written once and never touched again. The database itself rejects any update or delete — this does not rely on user discipline.'
+        },
+        {
+          icon: 'shield',
+          title: 'Verified suppliers',
+          text: 'A supplier does not appear to companies or submit an offer until their business is reviewed and their categories approved. An incomplete offer never reaches the buyer.'
+        }
+      ]
+    },
+    parties: {
+      title: 'Every role sees what concerns them, and nothing else',
+      lead: "Separated permissions that protect the company and preserve the supplier's rights at the same time.",
+      items: [
+        {
+          icon: 'company',
+          title: 'Buying companies',
+          points: [
+            'Spending ceilings set per employee',
+            'Offers compared on price, warranty and lead time',
+            'A complete log fit for internal and external audit'
+          ]
+        },
+        {
+          icon: 'supplier',
+          title: 'Suppliers',
+          points: [
+            'Real requests in your approved categories only',
+            'Competition on price and warranty, not on connections',
+            "Your offer's status is always visible: submitted, selected, or withdrawn"
+          ]
+        },
+        {
+          icon: 'audit',
+          title: 'Finance and audit',
+          points: [
+            'Approval or rejection with a written reason that stays in the log',
+            'The platform stops a monthly-ceiling breach at the moment of decision, and states the amount and the ceiling',
+            'Trace every amount back to its request, offer and decision'
+          ]
+        }
+      ]
+    },
+    how: {
+      title: 'Four steps, and not one of them off-platform',
+      lead: 'One cycle everyone understands, ending in a documented purchase order.',
+      steps: [
+        {
+          title: 'The buyer requests',
+          text: 'Item, quantity and category. The platform checks their ceiling before it accepts the request.'
+        },
+        {
+          title: 'Suppliers offer',
+          text: 'The request reaches verified suppliers in that category, each submitting price, warranty and lead time.'
+        },
+        {
+          title: 'The approver decides',
+          text: 'An offer is selected and sent for approval. The requester cannot approve it, and the reason is recorded.'
+        },
+        {
+          title: 'The purchase order issues',
+          text: 'Issued with a permanent reference, and the whole path from request to order stays readable in the log.'
+        }
+      ],
+      rules: [
+        { title: 'Over the request ceiling', text: 'Escalates to a higher authority — not blocked.' },
+        { title: 'Over the monthly ceiling', text: "Blocked. Nobody approves beyond the month's budget." },
+        { title: 'Category not permitted', text: 'Blocked. A ceiling does not extend beyond its categories.' }
+      ]
+    },
+    cta: {
+      title: 'Ready to bring your purchasing under your own rules?',
+      text: 'Create your company account today, or register your business as a supplier. Review comes before activation — which is precisely why the other side trusts it.',
+      primary: 'Create your company account →',
+      secondary: 'Register as a supplier'
+    },
+    footer: {
+      label: 'Footer links',
+      tagline: 'Verified procurement for Saudi companies',
+      createAccount: 'Create account',
+      signIn: 'Sign in',
+      copyright: '© 2026 Muthbit. All rights reserved.',
+      madeIn: 'Designed in Saudi Arabia'
+    }
   }
-];
+};
 
-const FEATURES = [
-  {
-    icon: 'ceiling',
-    title: 'سقف لكل مشترٍ',
-    text: 'مبلغ للطلب الواحد، وسقف شهري، وفئات مسموحة. ومن لم يُضبط له سقف لا يستطيع الشراء أصلاً — الإغلاق هو الوضع الافتراضي.'
-  },
-  {
-    icon: 'approval',
-    title: 'موافقة لا تُتجاوز',
-    text: 'تجاوز سقف الطلب يُرفع لصاحب صلاحية أعلى، وتجاوز السقف الشهري يُمنع منعاً قاطعاً. ولا يعتمد أحد طلباً أنشأه بنفسه.'
-  },
-  {
-    icon: 'ledger',
-    title: 'سجل لا يُعدَّل',
-    text: 'كل حدث يُكتب مرة واحدة ولا يُمسّ بعدها. قاعدة البيانات نفسها ترفض أي تعديل أو حذف — لا اعتماداً على انضباط المستخدمين.'
-  },
-  {
-    icon: 'shield',
-    title: 'موردون موثّقون',
-    text: 'المورد لا يظهر للشركات ولا يقدّم عرضاً قبل مراجعة منشأته واعتماد فئاته. والعرض الناقص لا يصل المشتري إطلاقاً.'
+const LandingContext = createContext(null);
+const useLanding = () => useContext(LandingContext);
+
+/**
+ * اللغة من العنوان أولاً (?lang=en)، ثم من زيارة سابقة، ثم العربية.
+ * العنوان يعكس المعروض دائماً: المحفوظة تُكتب فيه، و ?lang=ar أو قيمة مجهولة تُحذف — العربية بلا مُعامل.
+ * التبديل بـ replace لا push: زر الرجوع في المتصفح يرجع إلى ما قبل الصفحة، لا إلى اللغة السابقة.
+ */
+function useLandingLang() {
+  const [params, setParams] = useSearchParams();
+  const requested = params.get(LANG_PARAM);
+  const fromUrl = LANGS.includes(requested) ? requested : null;
+  const lang = fromUrl ?? readStoredLang() ?? DEFAULT_LANG;
+
+  useEffect(() => {
+    if (fromUrl) storeLang(fromUrl);
+    const wanted = lang === 'en' ? 'en' : null;
+    if (requested !== wanted) setParams(withLang(params, lang), { replace: true });
+  }, [fromUrl, lang, requested, params, setParams]);
+
+  function toggle() {
+    const next = lang === 'en' ? 'ar' : 'en';
+    // قبل تغيير العنوان: وإلا قرأ الرسم التالي المحفوظ القديم حين يُحذف المُعامل فعادت اللغة السابقة.
+    storeLang(next);
+    setParams(withLang(params, next), { replace: true });
   }
-];
 
-const PARTIES = [
-  {
-    icon: 'company',
-    title: 'الشركات المشترية',
-    points: [
-      'سقوف إنفاق تُضبط لكل موظف على حدة',
-      'مقارنة العروض بسعر وضمان ومدة تسليم',
-      'سجل كامل يصلح للمراجعة الداخلية والخارجية'
-    ]
-  },
-  {
-    icon: 'supplier',
-    title: 'الموردون',
-    points: [
-      'طلبات حقيقية في فئاتك المعتمدة وحدها',
-      'منافسة على السعر والضمان لا على المعرفة',
-      'حالة عرضك ظاهرة لك دائماً: مُقدَّم، أو مُختار، أو مسحوب'
-    ]
-  },
-  {
-    icon: 'audit',
-    title: 'المالية والمراجعة',
-    points: [
-      'اعتماد أو رفض بسبب مكتوب يبقى في السجل',
-      'المنصة توقف تجاوز السقف الشهري لحظة القرار، وتقول المبلغ والسقف بالرقم',
-      'تتبّع كل مبلغ إلى الطلب والعرض والقرار'
-    ]
-  }
-];
-
-const STEPS = [
-  { title: 'المشتري يطلب', text: 'يكتب الصنف والكمية والفئة. المنصة تتحقّق من سقفه قبل أن تقبل الطلب.' },
-  { title: 'الموردون يعرضون', text: 'يصل الطلب لموردي الفئة الموثّقين، ويقدّم كل واحد سعره وضمانه ومدته.' },
-  { title: 'المعتمِد يقرّر', text: 'يُختار العرض ويُرفع للاعتماد. صاحب الطلب لا يعتمده، والسبب يُكتب.' },
-  { title: 'أمر الشراء يصدر', text: 'يصدر بمرجع دائم، ويبقى الطريق كاملاً من الطلب إليه مقروءاً في السجل.' }
-];
-
-const RULES = [
-  { title: 'تجاوز سقف الطلب', text: 'يُرفع لصاحب صلاحية أعلى، لا يُمنع.' },
-  { title: 'تجاوز السقف الشهري', text: 'يُمنع. لا أحد يعتمد فوق ميزانية الشهر.' },
-  { title: 'فئة غير مسموحة', text: 'يُمنع. السقف لا يمتدّ خارج فئاته.' }
-];
+  return { lang, toggle };
+}
 
 export default function LandingPage() {
+  const { lang, toggle } = useLandingLang();
+
+  // قبل الرسم لا بعده: بـ useEffect تومض الصفحة الإنجليزية لحظةً بالاتجاه العربي.
+  // والإرجاع يعيد <html> إلى ar و rtl عند المغادرة إلى /login أو /register أو عند العودة إلى العربية.
+  useLayoutEffect(() => (lang === 'en' ? applyEnglishDocument(document, COPY.en.meta) : undefined), [lang]);
+
+  const value = { lang, t: COPY[lang], type: TYPE[lang], toggle };
+
   return (
-    <div className="min-h-screen bg-mkt-ground text-mkt-paper">
-      <SiteHeader />
-      <main>
-        <Hero />
-        <Problems />
-        <Features />
-        <Parties />
-        <HowItWorks />
-        <FinalCall />
-      </main>
-      <SiteFooter />
-    </div>
+    <LandingContext.Provider value={value}>
+      <div className="min-h-screen bg-mkt-ground text-mkt-paper">
+        <SiteHeader />
+        <main>
+          <Hero />
+          <Problems />
+          <Features />
+          <Parties />
+          <HowItWorks />
+          <FinalCall />
+        </main>
+        <SiteFooter />
+      </div>
+    </LandingContext.Provider>
   );
 }
 
 /* ───────────────────────────── الشريط العلوي ───────────────────────────── */
 
 function SiteHeader() {
+  const { t, toggle } = useLanding();
   return (
     <header className="border-b border-mkt-line">
       <div className={`${container} flex items-center justify-between gap-6 py-4`}>
         <Brand />
-        <nav aria-label="أقسام الصفحة" className="flex items-center gap-6">
-          {/* تحت 720 بكسل تختفي روابط الأقسام ويبقى زر الدخول وحده. */}
+        <nav aria-label={t.nav.label} className="flex items-center gap-3 min-[720px]:gap-6">
+          {/* تحت 720 بكسل تختفي روابط الأقسام، ويبقى زرّا اللغة والدخول. */}
           <ul className="hidden items-center gap-6 text-sm font-medium min-[720px]:flex">
-            {SECTION_LINKS.map((link) => (
-              <li key={link.href}>
-                <a href={link.href} className={textLink}>
-                  {link.label}
+            {SECTION_IDS.map((id) => (
+              <li key={id}>
+                <a href={`#${id}`} className={textLink}>
+                  {t.sections[id]}
                 </a>
               </li>
             ))}
           </ul>
+          {/* النص بلغة الوجهة (EN أو ع)، و lang عليه لينطقه قارئ الشاشة بلغته، و aria-label اسم اللغة كاملاً. */}
+          <button
+            type="button"
+            onClick={toggle}
+            lang={t.toggle.lang}
+            aria-label={t.toggle.label}
+            className={`inline-flex min-w-10 items-center justify-center rounded border border-mkt-line-strong px-3 py-2 text-sm font-semibold text-mkt-paper transition-colors hover:border-mkt-mint ${focusRing}`}
+          >
+            {t.toggle.text}
+          </button>
           <Link
             to="/login"
             className={`rounded border border-mkt-line-strong px-4 py-2 text-sm font-medium text-mkt-paper transition-colors hover:border-mkt-mint ${focusRing}`}
           >
-            تسجيل الدخول
+            {t.nav.signIn}
           </Link>
         </nav>
       </div>
@@ -158,13 +420,15 @@ function SiteHeader() {
 
 /** القفلة الأفقية كما في شريط المنصة: الرمز ثم الاسم، و aria-hidden على الرمز لأن الاسم مكتوب بجانبه. */
 function Brand() {
+  const { lang, t, type } = useLanding();
+  // تبقى اللغة مع الشعار ولو كان التخزين محجوباً.
   return (
     <Link
-      to="/"
-      className={`flex items-center gap-2 rounded-sm font-display text-lg font-semibold text-mkt-paper ${focusRing}`}
+      to={lang === 'en' ? `/?${LANG_PARAM}=en` : '/'}
+      className={`flex items-center gap-2 rounded-sm text-lg text-mkt-paper ${type.strong} ${focusRing}`}
     >
       <Logo size={30} onDark aria-hidden="true" />
-      مثبت
+      {t.brand}
     </Link>
   );
 }
@@ -172,38 +436,37 @@ function Brand() {
 /* ───────────────────────────── ١ · الواجهة الأولى ───────────────────────────── */
 
 function Hero() {
+  const { t, type } = useLanding();
+  const [first, highlighted, last] = t.hero.lines;
   return (
     <section
       aria-labelledby="hero-title"
       className={`${container} grid items-center gap-12 py-16 sm:py-20 min-[900px]:grid-cols-2`}
     >
       <div>
-        <Chip>منصة مشتريات موثّقة</Chip>
+        <Chip>{t.hero.chip}</Chip>
 
-        <h1 id="hero-title" className="mt-6 font-display text-4xl font-bold leading-snug text-mkt-paper sm:text-5xl">
-          <span className="block">الشراء يمرّ</span>
-          <span className="block text-mkt-mint">بقواعد شركتك</span>
-          <span className="block">لا من حولها.</span>
+        <h1 id="hero-title" className={`mt-6 text-4xl leading-snug text-mkt-paper sm:text-5xl ${type.heading}`}>
+          <span className="block">{first}</span>
+          <span className="block text-mkt-mint">{highlighted}</span>
+          <span className="block">{last}</span>
         </h1>
 
-        <p className="mt-6 max-w-xl text-lg text-mkt-muted">
-          مثبت تضع سقف الإنفاق لكل مشترٍ، وتُلزم كل طلب بموافقة من غير صاحبه، وتكتب كل خطوة في سجل لا يقبل التعديل —
-          وتفتح الباب لموردين لا يظهرون قبل التحقق منهم.
-        </p>
+        <p className="mt-6 max-w-xl text-lg text-mkt-muted">{t.hero.lede}</p>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <CtaLink to="/register?type=company">أنشئ حساب شركتك ←</CtaLink>
+          <CtaLink to="/register?type=company">{t.hero.primary}</CtaLink>
           <CtaLink to="/login" variant="outline">
-            لديك حساب؟ دخول
+            {t.hero.secondary}
           </CtaLink>
         </div>
 
         {/* dt قبل dd في الترتيب، و flex-col-reverse يُظهر القيمة فوق عنوانها. */}
         <dl className="mt-10 grid grid-cols-3 gap-4 border-t border-mkt-line pt-6">
-          {STATS.map((stat) => (
+          {t.hero.stats.map((stat) => (
             <div key={stat.label} className="flex flex-col-reverse gap-1">
               <dt className="text-sm text-mkt-muted">{stat.label}</dt>
-              <dd className="font-display text-xl font-semibold text-mkt-paper sm:text-2xl">{stat.value}</dd>
+              <dd className={`text-xl text-mkt-paper sm:text-2xl ${type.strong}`}>{stat.value}</dd>
             </div>
           ))}
         </dl>
@@ -216,31 +479,31 @@ function Hero() {
 
 /** الرسم زخرفة لا محتوى: يُخفى عن قارئ الشاشة، ويختفي كلياً تحت 900 بكسل بدل أن ينضغط. */
 function HeroVisual() {
+  const { t } = useLanding();
   return (
     <div className="hidden min-[900px]:block">
       <div className="relative overflow-hidden rounded-2xl border border-mkt-line bg-gradient-to-b from-mkt-surface to-mkt-ground-2 px-8 py-16">
         <HeroArt />
-        {/* start = يمين الصفحة في RTL، و end = يسارها. */}
+        {/* start و end تنقلبان مع الاتجاه: أعلى اليمين وأسفل اليسار في العربية، والعكس في الإنجليزية. */}
         <Chip className="absolute start-5 top-5" icon={<LockIcon />}>
-          سجل ملحق فقط
+          {t.chips.log}
         </Chip>
         <Chip className="absolute bottom-5 end-5" icon={<ClipboardIcon />}>
-          مبنيّة لإدارة المشتريات
+          {t.chips.built}
         </Chip>
       </div>
     </div>
   );
 }
 
-// إحداثيات SVG فيزيائية لا تنعكس مع RTL: «اليمين» في الوصف هو x الأكبر هنا.
-// والسلسلة تبدأ من اليمين كالصفحة: اليمنى والوسطى تمّتا، واليسرى لم تتم بعد.
-const TIMELINE = [
-  { cx: 330, done: true },
-  { cx: 210, done: true },
-  { cx: 90, done: false }
-];
+// إحداثيات SVG فيزيائية لا تنعكس مع الاتجاه، فتُعكس السلسلة هنا يدوياً:
+// تقرأ مع اتجاه القراءة، والخطوة المنجزة أولاً — يميناً في العربية ويساراً في الإنجليزية.
+const TIMELINE_X = { rtl: [330, 210, 90], ltr: [90, 210, 330] };
+const TIMELINE_DONE = [true, true, false];
 
 function HeroArt() {
+  const { t } = useLanding();
+  const timeline = TIMELINE_X[t.dir].map((cx, index) => ({ cx, done: TIMELINE_DONE[index] }));
   return (
     <svg viewBox="0 0 420 356" className="h-auto w-full" aria-hidden="true" focusable="false">
       <defs>
@@ -295,9 +558,9 @@ function HeroArt() {
         <Logo x="62" y="70" size={48} body="var(--mb-surface)" accent="var(--mb-surface)" aria-hidden="true" />
       </g>
 
-      {/* خط المراحل من اليمين: اليمنى والوسطى تمّتا بعلامة صح، واليسرى مفرّغة لم تتم بعد */}
+      {/* خط المراحل مع اتجاه القراءة: الأولى والوسطى تمّتا بعلامة صح، والأخيرة مفرّغة لم تتم بعد */}
       <line x1="90" y1="310" x2="330" y2="310" stroke="var(--mb-mkt-line-strong)" strokeWidth="2" />
-      {TIMELINE.map(({ cx, done }) => (
+      {timeline.map(({ cx, done }) => (
         <g key={cx}>
           <circle
             cx={cx}
@@ -327,12 +590,16 @@ function HeroArt() {
 /* ───────────────────────────── ٢ · المشكلة ───────────────────────────── */
 
 function Problems() {
+  const { t } = useLanding();
+  const copy = t.problems;
   return (
-    <Section id="why" eyebrow="لماذا مثبت" title="ثلاث ثغرات تتكرّر في كل شركة تشتري" lead="لا واحدة منها تُحلّ بجدول إكسل ولا بمجموعة واتساب.">
+    <Section id="why" eyebrow={copy.eyebrow} title={copy.title} lead={copy.lead}>
       <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {PROBLEMS.map((item) => (
-          <li key={item.title}>
-            <Card icon={item.icon} title={item.title}>{item.text}</Card>
+        {copy.items.map((item) => (
+          <li key={item.icon}>
+            <Card icon={item.icon} title={item.title}>
+              {item.text}
+            </Card>
           </li>
         ))}
       </ul>
@@ -343,17 +610,16 @@ function Problems() {
 /* ───────────────────────────── ٣ · المميزات ───────────────────────────── */
 
 function Features() {
+  const { t } = useLanding();
+  const copy = t.features;
   return (
-    <Section
-      id="features"
-      eyebrow="المميزات"
-      title="قواعد الشركة تُطبَّق، لا تُشرح"
-      lead="من إنشاء الطلب حتى صدور أمر الشراء — كل خطوة محكومة ومكتوبة."
-    >
+    <Section id="features" eyebrow={t.sections.features} title={copy.title} lead={copy.lead}>
       <ul className="mt-12 grid gap-5 sm:grid-cols-2 min-[900px]:grid-cols-4">
-        {FEATURES.map((item) => (
-          <li key={item.title}>
-            <Card icon={item.icon} title={item.title}>{item.text}</Card>
+        {copy.items.map((item) => (
+          <li key={item.icon}>
+            <Card icon={item.icon} title={item.title}>
+              {item.text}
+            </Card>
           </li>
         ))}
       </ul>
@@ -364,16 +630,13 @@ function Features() {
 /* ───────────────────────────── ٤ · الأطراف ───────────────────────────── */
 
 function Parties() {
+  const { t } = useLanding();
+  const copy = t.parties;
   return (
-    <Section
-      id="parties"
-      eyebrow="الأطراف"
-      title="كل دور يرى ما يخصّه، ولا شيء سواه"
-      lead="صلاحيات مفصولة تحمي الشركة وتحفظ حقّ المورد في الوقت نفسه."
-    >
+    <Section id="parties" eyebrow={t.sections.parties} title={copy.title} lead={copy.lead}>
       <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {PARTIES.map((party) => (
-          <li key={party.title}>
+        {copy.items.map((party) => (
+          <li key={party.icon}>
             <Card icon={party.icon} title={party.title}>
               <ul className="space-y-3">
                 {party.points.map((point) => (
@@ -394,29 +657,28 @@ function Parties() {
 /* ───────────────────────────── ٥ · كيف تعمل ───────────────────────────── */
 
 function HowItWorks() {
+  const { t, type } = useLanding();
+  const copy = t.how;
   return (
-    <Section
-      id="how"
-      eyebrow="كيف تعمل"
-      title="أربع خطوات، ولا خطوة خارج المنصة"
-      lead="دورة واحدة يفهمها الجميع، وتنتهي بأمر شراء موثّق."
-    >
+    <Section id="how" eyebrow={t.sections.how} title={copy.title} lead={copy.lead}>
       <div className="relative mt-12">
         {/* الخط الأفقي يمرّ بمراكز الدوائر: من منتصف العمود الأول إلى منتصف الأخير.
             تحت 900 بكسل يختفي وتصير الخطوات تحت بعضها. */}
         <div aria-hidden="true" className="absolute inset-x-[12.5%] top-5 hidden h-px bg-mkt-line-strong min-[900px]:block" />
         <ol className="relative grid gap-8 min-[900px]:grid-cols-4 min-[900px]:gap-6">
-          {STEPS.map((step, index) => (
+          {copy.steps.map((step, index) => (
             <li
               key={step.title}
               className="flex gap-4 min-[900px]:flex-col min-[900px]:items-center min-[900px]:text-center"
             >
               {/* text-surface على bg-seal كزر المنصة الأساسي: يبقى مقروءاً والختم يتبدّل مع وضع النظام. */}
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-seal font-display font-semibold text-surface">
+              <span
+                className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-seal text-surface ${type.strong}`}
+              >
                 {index + 1}
               </span>
               <div>
-                <h3 className="font-display text-lg font-semibold text-mkt-paper">{step.title}</h3>
+                <h3 className={`text-lg text-mkt-paper ${type.strong}`}>{step.title}</h3>
                 <p className="mt-2 text-mkt-muted">{step.text}</p>
               </div>
             </li>
@@ -425,9 +687,9 @@ function HowItWorks() {
       </div>
 
       <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {RULES.map((rule) => (
+        {copy.rules.map((rule) => (
           <li key={rule.title} className="rounded-xl border border-mkt-line bg-mkt-surface px-5 py-4">
-            <p className="font-display font-semibold text-mkt-paper">{rule.title}</p>
+            <p className={`text-mkt-paper ${type.strong}`}>{rule.title}</p>
             <p className="mt-1 text-sm text-mkt-muted">{rule.text}</p>
           </li>
         ))}
@@ -439,20 +701,19 @@ function HowItWorks() {
 /* ───────────────────────────── ٦ · الدعوة والتذييل ───────────────────────────── */
 
 function FinalCall() {
+  const { t, type } = useLanding();
   return (
     <section aria-labelledby="cta-title" className="border-t border-mkt-line py-20">
       <div className={container}>
         <div className="rounded-2xl border border-mkt-line-strong bg-gradient-to-b from-mkt-surface-2 to-mkt-surface px-6 py-14 text-center sm:px-12">
-          <h2 id="cta-title" className="font-display text-3xl font-bold leading-snug text-mkt-paper sm:text-4xl">
-            جاهز تُدخل مشترياتك تحت قواعدك؟
+          <h2 id="cta-title" className={`text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}>
+            {t.cta.title}
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-mkt-muted">
-            أنشئ حساب شركتك اليوم، أو سجّل منشأتك كمورد. المراجعة تسبق التفعيل — ولهذا السبب بالذات يثق بها الطرف الآخر.
-          </p>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-mkt-muted">{t.cta.text}</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <CtaLink to="/register?type=company">أنشئ حساب شركتك ←</CtaLink>
+            <CtaLink to="/register?type=company">{t.cta.primary}</CtaLink>
             <CtaLink to="/register?type=supplier" variant="outline">
-              سجّل منشأتك كمورد
+              {t.cta.secondary}
             </CtaLink>
           </div>
         </div>
@@ -462,41 +723,42 @@ function FinalCall() {
 }
 
 function SiteFooter() {
+  const { t } = useLanding();
   return (
     <footer className="border-t border-mkt-line bg-mkt-ground-2">
       <div className={`${container} py-12`}>
         <div className="flex flex-col gap-8 min-[720px]:flex-row min-[720px]:items-start min-[720px]:justify-between">
           <div>
             <Brand />
-            <p className="mt-3 text-sm text-mkt-muted">منصة مشتريات موثّقة للشركات السعودية</p>
+            <p className="mt-3 text-sm text-mkt-muted">{t.footer.tagline}</p>
           </div>
-          <nav aria-label="روابط التذييل">
+          <nav aria-label={t.footer.label}>
             <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
-              {SECTION_LINKS.map((link) => (
-                <li key={link.href}>
-                  <a href={link.href} className={textLink}>
-                    {link.label}
+              {SECTION_IDS.map((id) => (
+                <li key={id}>
+                  <a href={`#${id}`} className={textLink}>
+                    {t.sections[id]}
                   </a>
                 </li>
               ))}
               <li>
                 <Link to="/register" className={textLink}>
-                  إنشاء حساب
+                  {t.footer.createAccount}
                 </Link>
               </li>
               <li>
                 <Link to="/login" className={textLink}>
-                  تسجيل الدخول
+                  {t.footer.signIn}
                 </Link>
               </li>
             </ul>
           </nav>
         </div>
 
-        {/* في RTL أول عنصر في الصف هو الأيمن. */}
+        {/* أول عنصر في الصف في بداية السطر: يميناً في العربية ويساراً في الإنجليزية. */}
         <div className="mt-10 flex flex-wrap justify-between gap-3 border-t border-mkt-line pt-6 text-sm text-mkt-muted">
-          <p>© 2026 مثبت. جميع الحقوق محفوظة.</p>
-          <p>صُمّمت في المملكة العربية السعودية</p>
+          <p>{t.footer.copyright}</p>
+          <p>{t.footer.madeIn}</p>
         </div>
       </div>
     </footer>
@@ -506,13 +768,14 @@ function SiteFooter() {
 /* ───────────────────────────── قطع مشتركة في الصفحة ───────────────────────────── */
 
 function Section({ id, eyebrow, title, lead, children }) {
+  const { type } = useLanding();
   const titleId = `${id}-title`;
   return (
     <section id={id} aria-labelledby={titleId} className="border-t border-mkt-line py-20">
       <div className={container}>
         <div className="max-w-2xl">
           <p className="text-sm font-semibold text-mkt-mint">{eyebrow}</p>
-          <h2 id={titleId} className="mt-3 font-display text-3xl font-bold leading-snug text-mkt-paper sm:text-4xl">
+          <h2 id={titleId} className={`mt-3 text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}>
             {title}
           </h2>
           <p className="mt-4 text-lg text-mkt-muted">{lead}</p>
@@ -525,10 +788,11 @@ function Section({ id, eyebrow, title, lead, children }) {
 
 /** بطاقة بأيقونة فوق عنوانها. icon مفتاح في CARD_ICONS. */
 function Card({ icon, title, children }) {
+  const { type } = useLanding();
   return (
     <div className="h-full rounded-xl border border-mkt-line bg-mkt-surface p-6">
       <CardIcon name={icon} />
-      <h3 className="mt-4 font-display text-lg font-semibold text-mkt-paper">{title}</h3>
+      <h3 className={`mt-4 text-lg text-mkt-paper ${type.strong}`}>{title}</h3>
       <div className="mt-3 text-mkt-muted">{children}</div>
     </div>
   );
