@@ -44,6 +44,8 @@ router.get('/open-requests', async (req, res, next) => {
       .select(
         'requests.id', 'requests.reference', 'requests.item', 'requests.quantity',
         'requests.specs', 'requests.needed_by', 'requests.category_id', 'requests.created_at',
+        // الحالة صريحة في الرد: البوابة لا تعرض «تقديم عرض جديد» إلا على طلب sourcing تراه بعينها.
+        'requests.status',
         'offers.id as my_offer_id', 'offers.price as my_offer_price', 'offers.status as my_offer_status'
       )
       .where('requests.status', 'sourcing')
@@ -65,14 +67,24 @@ const offerSchema = z.object({
   specs: z.string().max(4000).optional()
 });
 
-/** تقديم عرض. العرض الناقص يُقبل ويُحفظ، لكنه لا يصل إلى المشتري إطلاقاً. */
+// العرض مكتمل إذا كان الضمان ومدة التسليم كلاهما أكبر من صفر.
+const isComplete = (offer) => offer.warranty_months > 0 && offer.lead_days > 0;
+const INCOMPLETE_MESSAGE = 'العرض ناقص (يلزم ضمان ومدة تسليم) ولن يُعرض على المشتري حتى يكتمل.';
+
+/**
+ * تقديم عرض. العرض الناقص يُقبل ويُحفظ، لكنه لا يصل إلى المشتري إطلاقاً.
+ *
+ * صف واحد لكل مورد على كل طلب (قيد فريد في الجدول)، فالعرض بعد السحب لا يُدرج صفاً ثانياً
+ * بل يُحيي الصف نفسه بالقيم الجديدة. ويُقيَّد ذلك حدثاً مستقلاً يحمل السعر السابق،
+ * لأن الصف بعد التحديث لا يحفظه — والسجل الملحق وحده يحفظ تاريخ السعر.
+ */
 router.post('/', async (req, res, next) => {
   try {
     const parsed = offerSchema.safeParse(req.body);
     if (!parsed.success) throw badRequest('بيانات العرض غير صحيحة.', parsed.error.flatten());
     const supplier = await verifiedSupplier(req);
 
-    const created = await db.transaction(async (trx) => {
+    const { offer, resubmitted } = await db.transaction(async (trx) => {
       const request = await trx('requests').where({ id: parsed.data.request_id }).first();
       if (!request) throw notFound('الطلب غير موجود.');
       if (request.status !== 'sourcing') throw conflict('الطلب لم يعد يستقبل عروضاً.', { status: request.status });
@@ -82,20 +94,55 @@ router.post('/', async (req, res, next) => {
         .first();
       if (!approved) throw forbidden('الطلب خارج فئاتك المعتمدة.');
 
-      const duplicate = await trx('offers').where({ request_id: request.id, supplier_id: supplier.id }).first();
-      if (duplicate) throw conflict('قدّمت عرضاً لهذا الطلب مسبقاً. اسحبه أولاً لتقديم غيره.');
+      // forUpdate: طلبان متزامنان على عرض مسحوب لا يُحييانه معاً — الثاني ينتظر فيجده مُقدَّماً فيُرفض.
+      const existing = await trx('offers')
+        .where({ request_id: request.id, supplier_id: supplier.id })
+        .forUpdate()
+        .first();
+      // المسحوب وحده يُعاد تقديمه. المُقدَّم والمختار والمرفوض وأي حالة لا نعرفها: رفض — الافتراض هو المنع.
+      if (existing && existing.status !== 'withdrawn') {
+        throw conflict('قدّمت عرضاً لهذا الطلب مسبقاً. اسحبه أولاً لتقديم غيره.');
+      }
 
-      const [offer] = await trx('offers')
-        .insert({
-          request_id: request.id,
-          supplier_id: supplier.id,
-          submitted_by_user_id: req.user.id,
-          price: parsed.data.price,
-          warranty_months: parsed.data.warranty_months,
-          lead_days: parsed.data.lead_days,
-          specs: parsed.data.specs || null,
-          status: 'submitted'
-        })
+      const terms = {
+        submitted_by_user_id: req.user.id,
+        price: parsed.data.price,
+        warranty_months: parsed.data.warranty_months,
+        lead_days: parsed.data.lead_days,
+        specs: parsed.data.specs || null,
+        status: 'submitted'
+      };
+
+      if (existing) {
+        const [revived] = await trx('offers')
+          .where({ id: existing.id })
+          .update({ ...terms, updated_at: trx.fn.now() })
+          .returning('*');
+
+        await audit.record(trx, {
+          actor: req.user,
+          // شركة الطلب لا شركة الفاعل — كما في التقديم الأول.
+          companyId: request.company_id,
+          entityType: 'offer',
+          entityId: revived.id,
+          action: 'offer.resubmitted',
+          payload: {
+            request_reference: request.reference,
+            // من الصف قبل التحديث: هذا وحده ما يُبقي السعر السابق محفوظاً والصف واحد.
+            previous_price: Number(existing.price),
+            price: Number(revived.price),
+            warranty_months: revived.warranty_months,
+            lead_days: revived.lead_days,
+            complete: isComplete(revived)
+          },
+          ip: req.ip
+        });
+
+        return { offer: revived, resubmitted: true };
+      }
+
+      const [created] = await trx('offers')
+        .insert({ request_id: request.id, supplier_id: supplier.id, ...terms })
         .returning('*');
 
       await audit.record(trx, {
@@ -103,28 +150,28 @@ router.post('/', async (req, res, next) => {
         // شركة الطلب لا شركة الفاعل: المورد بلا شركة، فبدونها لا يرى المشتري الحدث في سجله.
         companyId: request.company_id,
         entityType: 'offer',
-        entityId: offer.id,
+        entityId: created.id,
         action: 'offer.submitted',
         payload: {
           request_reference: request.reference,
-          price: Number(offer.price),
-          warranty_months: offer.warranty_months,
-          lead_days: offer.lead_days,
-          complete: offer.warranty_months > 0 && offer.lead_days > 0
+          price: Number(created.price),
+          warranty_months: created.warranty_months,
+          lead_days: created.lead_days,
+          complete: isComplete(created)
         },
         ip: req.ip
       });
 
-      return offer;
+      return { offer: created, resubmitted: false };
     });
 
-    const complete = created.warranty_months > 0 && created.lead_days > 0;
-    return res.status(201).json({
-      offer: created,
+    const complete = isComplete(offer);
+    const doneMessage = resubmitted ? 'أُعيد تقديم العرض بالسعر الجديد.' : 'قُدّم العرض وهو مكتمل ويُعرض على المشتري.';
+    // الإحياء 200 لا 201: المورد لم يُنشئ صفاً جديداً.
+    return res.status(resubmitted ? 200 : 201).json({
+      offer,
       complete,
-      message: complete
-        ? 'قُدّم العرض وهو مكتمل ويُعرض على المشتري.'
-        : 'العرض ناقص (يلزم ضمان ومدة تسليم) ولن يُعرض على المشتري حتى يكتمل.'
+      message: complete ? doneMessage : INCOMPLETE_MESSAGE
     });
   } catch (err) {
     return next(err);
@@ -139,10 +186,14 @@ router.get('/mine', async (req, res, next) => {
       .join('requests', 'requests.id', 'offers.request_id')
       .select(
         'offers.id', 'offers.price', 'offers.warranty_months', 'offers.lead_days', 'offers.status', 'offers.created_at',
+        // updated_at: إعادة التقديم تُحيي الصف القديم فيبقى created_at تاريخ العرض الأول،
+        // والبوابة تعرض بجانب السعر الجديد تاريخاً لا يسبقه.
+        'offers.updated_at',
         'requests.reference', 'requests.item', 'requests.quantity', 'requests.status as request_status'
       )
       .where('offers.supplier_id', req.user.supplierId)
-      .orderBy('offers.created_at', 'desc')
+      // الترتيب بالتاريخ المعروض نفسه، فلا يظهر عمود «التاريخ» مبعثراً.
+      .orderBy('offers.updated_at', 'desc')
       .limit(200);
     return res.json({ offers });
   } catch (err) {

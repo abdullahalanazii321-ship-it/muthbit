@@ -78,6 +78,7 @@ export const auditActionLabels = {
   'request.rejected': 'رفض طلب',
   'request.policy_blocked': 'منعته السياسة',
   'offer.submitted': 'تقديم عرض',
+  'offer.resubmitted': 'إعادة تقديم عرض',
   'offer.withdrawn': 'سحب عرض',
   'purchase_order.issued': 'إصدار أمر شراء',
   'platform.viewed_requests': 'اطّلاع المنصة على الطلبات',

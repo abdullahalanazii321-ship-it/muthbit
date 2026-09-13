@@ -845,6 +845,81 @@ async function run() {
     { status: nineDigitCr.status, body: nineDigitCr.body }
   );
 
+  section('٢١ — إعادة تقديم العرض بعد سحبه');
+
+  // صف واحد لكل مورد على كل طلب (قيد فريد): العرض الجديد بعد السحب يُحيي الصف نفسه ولا يُدرج غيره.
+  const withdrawOffer = (offerId, reason) =>
+    request(app).post(`/api/offers/${offerId}/withdraw`).set(auth(supplier.token)).send({ reason });
+  const submitOffer = (requestId, price) =>
+    request(app)
+      .post('/api/offers')
+      .set(auth(supplier.token))
+      .send({ request_id: requestId, price, warranty_months: 12, lead_days: 5 });
+
+  // مورد أخطأ في كتابة السعر فسحب عرضه — كان يفقد الطلب نهائياً.
+  const resubmitRequestId = await newRequest('شاشات عرض لقاعة الاجتماعات');
+  const mistakenOfferId = await newOffer(resubmitRequestId, 50000000);
+  const mistakenWithdraw = await withdrawOffer(mistakenOfferId, 'خطأ في كتابة السعر');
+
+  const resubmit = await submitOffer(resubmitRequestId, 50000);
+  const revivedRow = await db('offers').where({ id: mistakenOfferId }).first();
+  check(
+    'إعادة تقديم عرض بعد سحبه تنجح بـ 200 والسعر الجديد هو المخزَّن',
+    mistakenWithdraw.status === 200 &&
+      resubmit.status === 200 &&
+      Boolean(revivedRow) &&
+      revivedRow.status === 'submitted' &&
+      Number(revivedRow.price) === 50000,
+    { withdraw: mistakenWithdraw.status, status: resubmit.status, body: resubmit.body }
+  );
+
+  const { n: offerRowCount } = await db('offers')
+    .where({ request_id: resubmitRequestId, supplier_id: supplier.user.supplier_id })
+    .count('* as n')
+    .first();
+  check(
+    'إعادة التقديم تُحيي الصف نفسه: صف واحد لهذا المورد على هذا الطلب',
+    Number(offerRowCount) === 1 && Boolean(resubmit.body.offer) && resubmit.body.offer.id === mistakenOfferId,
+    { rows: offerRowCount }
+  );
+
+  // يقرؤه مالك الشركة المشترية: أحداث العروض تُنسب لشركة الطلب.
+  const resubmitAudit = await request(app).get(`/api/audit?entity_id=${mistakenOfferId}`).set(auth(owner.token));
+  const resubmittedEvent = (resubmitAudit.body.events || []).find((e) => e.action === 'offer.resubmitted');
+  check(
+    'السجل يقيّد offer.resubmitted ومعه السعر السابق والجديد',
+    Boolean(resubmittedEvent && resubmittedEvent.payload) &&
+      resubmittedEvent.payload.previous_price === 50000000 &&
+      resubmittedEvent.payload.price === 50000,
+    { status: resubmitAudit.status, event: resubmittedEvent }
+  );
+
+  // بعد الإحياء يعود القفل: العرض مُقدَّم، فالعرض الثاني عليه يُرفض والسعر لا يتغيّر.
+  const secondWhileSubmitted = await submitOffer(resubmitRequestId, 45000);
+  const afterSecond = await db('offers').where({ id: mistakenOfferId }).first();
+  check(
+    'عرض ثانٍ فوق عرض مُقدَّم يُرفض بـ 409',
+    secondWhileSubmitted.status === 409 && Number(afterSecond.price) === 50000,
+    { status: secondWhileSubmitted.status, body: secondWhileSubmitted.body }
+  );
+
+  // closed بلا مسار في الواجهة البرمجية بعد، فتُضبط مباشرة كما تُضبط حالات أخرى في هذه الفحوص.
+  const closedRequestId = await newRequest('طاولات اجتماعات');
+  const closedOfferId = await newOffer(closedRequestId, 12000);
+  await withdrawOffer(closedOfferId, 'تغيّر سعر المصنع');
+  await db('requests').where({ id: closedRequestId }).update({ status: 'closed' });
+  const afterClose = await submitOffer(closedRequestId, 11000);
+  const closedRow = await db('offers').where({ id: closedOfferId }).first();
+  check(
+    'مورد سحب عرضه ثم أُغلق الطلب لا يعيد التقديم',
+    afterClose.status === 409 &&
+      Boolean(afterClose.body.error && afterClose.body.error.details) &&
+      afterClose.body.error.details.status === 'closed' &&
+      closedRow.status === 'withdrawn' &&
+      Number(closedRow.price) === 12000,
+    { status: afterClose.status, body: afterClose.body, row: closedRow && closedRow.status }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

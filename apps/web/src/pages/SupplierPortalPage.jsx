@@ -25,6 +25,10 @@ const SKELETON_ROWS = 4;
 // وأي حالة غير معروفة لا يظهر لها زر — الافتراض هو المنع.
 const WITHDRAWABLE_STATUS = 'submitted';
 
+// «تقديم عرض جديد» للمسحوب وحده وعلى طلب ما زال يستقبل العروض — لا لعرض قائم ولا مختار ولا لطلب أُغلق.
+const RESUBMITTABLE_STATUS = 'withdrawn';
+const OPEN_REQUEST_STATUS = 'sourcing';
+
 const isOpenRequestsResponse = (data) => Array.isArray(data?.requests);
 const isMyOffersResponse = (data) => Array.isArray(data?.offers);
 
@@ -151,8 +155,10 @@ function OpenRequestsPanel({ list, notices, onDismissNotice, onSubmitted, onWith
     <div className="flex flex-col gap-4">
       {list.refreshing && <RefreshingNote />}
       {requests.map((request) => (
+        // المفتاح يحمل حالة عرضي: وصول القائمة المحدّثة بعد تقديم أو سحب يبني البطاقة من جديد،
+        // فلا يبقى فيها «جارٍ التحديث» أو نموذج مفتوح من حالة سابقة.
         <OpenRequestCard
-          key={request.id}
+          key={`${request.id}:${request.my_offer_status ?? 'none'}`}
           request={request}
           notice={notices[request.id] ?? null}
           onDismissNotice={() => onDismissNotice(request.id)}
@@ -170,6 +176,8 @@ function OpenRequestCard({ request, notice, onDismissNotice, onSubmitted, onWith
   // بعد نجاح التقديم وقبل وصول القائمة المحدّثة: لا يعود زر «قدّم عرضاً» للظهور لحظةً.
   const [submitted, setSubmitted] = useState(false);
   const hasOffer = Boolean(request.my_offer_id);
+  // حالة الطلب صريحة لا مفترضة من أن القائمة للطلبات المفتوحة: إن غابت فلا زر.
+  const canResubmit = request.my_offer_status === RESUBMITTABLE_STATUS && request.status === OPEN_REQUEST_STATUS;
   const itemId = `request-${request.id}-item`;
 
   function handleSubmitted(result) {
@@ -215,25 +223,27 @@ function OpenRequestCard({ request, notice, onDismissNotice, onSubmitted, onWith
           </Notice>
         )}
 
-        {hasOffer ? (
-          <MyOfferBar request={request} onWithdrawResult={onWithdrawResult} />
-        ) : submitted ? (
-          <RefreshingNote />
-        ) : formOpen ? (
-          <OfferForm requestId={request.id} onSubmitted={handleSubmitted} onCancel={() => setFormOpen(false)} />
-        ) : (
-          <div>
-            <Button onClick={() => setFormOpen(true)}>قدّم عرضاً</Button>
-          </div>
-        )}
+        {hasOffer && <MyOfferBar request={request} onWithdrawResult={onWithdrawResult} />}
+
+        {/* النموذج نفسه للعرض الأول وللعرض الجديد بعد السحب، ويفتح فارغاً في الحالتين. */}
+        {(!hasOffer || canResubmit) &&
+          (submitted ? (
+            <RefreshingNote />
+          ) : formOpen ? (
+            <OfferForm requestId={request.id} onSubmitted={handleSubmitted} onCancel={() => setFormOpen(false)} />
+          ) : (
+            <div>
+              <Button onClick={() => setFormOpen(true)}>{hasOffer ? 'تقديم عرض جديد' : 'قدّم عرضاً'}</Button>
+            </div>
+          ))}
       </div>
     </article>
   );
 }
 
 /**
- * عرض المورد الحالي على الطلب. المسحوب يبقى مرتبطاً بالطلب في الخادم،
- * والخادم يرفض عرضاً ثانياً على الطلب نفسه — لذلك لا يظهر «قدّم عرضاً» بعد السحب.
+ * عرض المورد الحالي على الطلب. المسحوب يبقى مرتبطاً بالطلب في الخادم (صف واحد لكل مورد على كل طلب)،
+ * والعرض الجديد بعد السحب يُحيي الصف نفسه — فيبقى هذا السطر بسعره القديم حتى يصل الجديد.
  */
 function MyOfferBar({ request, onWithdrawResult }) {
   return (
@@ -343,7 +353,9 @@ function OffersTable({ loading = false, offers = [], onWithdrawResult }) {
                   <td className={cell}>
                     <StatusBadge status={offer.request_status} />
                   </td>
-                  <td className={`${cell} tabular-nums`}>{formatDate(offer.created_at)}</td>
+                  {/* تاريخ آخر تغيير على الصف لا تاريخ إنشائه: يطابق السعر المعروض بعد إعادة التقديم.
+                      created_at احتياط إن نُشرت الواجهة قبل أن يعيد الخادم updated_at. */}
+                  <td className={`${cell} tabular-nums`}>{formatDate(offer.updated_at ?? offer.created_at)}</td>
                   <td className={`${cell} text-end`}>
                     {offer.status === WITHDRAWABLE_STATUS && (
                       <WithdrawButton
@@ -381,9 +393,8 @@ function TermCell({ value, format }) {
 // ---------- مشترك بين اللسانين ----------
 
 /**
- * السحب بخطوتين داخل السطر نفسه: العرض المسحوب لا يُستبدل بعرض آخر على الطلب نفسه،
- * فالنقرة الواحدة الخاطئة لا رجعة فيها.
- * والسبب مطلوب: السحب يسلب الشركة عرضاً قد تكون بنت عليه قرارها.
+ * السحب بخطوتين داخل السطر نفسه، والسبب مطلوب: السحب يسلب الشركة عرضاً قد تكون بنت عليه قرارها،
+ * ويبقى في سجلها وإن قُدّم بعده عرض جديد.
  * بعد النجاح يبقى الزر بحالة الانتظار حتى تصل القائمة المحدّثة ويختفي معها.
  */
 function WithdrawButton({ offerId, label, onResult }) {
