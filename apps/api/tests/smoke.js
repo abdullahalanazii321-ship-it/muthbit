@@ -759,6 +759,92 @@ async function run() {
     { dsn: envConfig.sentryDsn, enabled: sentry.isEnabled() }
   );
 
+  section('٢٠ — التسجيل العام');
+
+  // صفحة التسجيل يفتحها زائر بلا رمز، وتسجيل المورد يشترط category_slugs من هذه القائمة.
+  const publicCategories = await request(app).get('/api/categories');
+  check(
+    'قائمة الفئات تُقرأ بلا رمز مصادقة',
+    publicCategories.status === 200 &&
+      Array.isArray(publicCategories.body.categories) &&
+      publicCategories.body.categories.length > 0,
+    { status: publicCategories.status }
+  );
+
+  // cr_number فريد في الجدول، فيُشتق من الوقت كما في القسم ١٤ — ولكل تسجيل رقمه.
+  const registerStamp = Date.now();
+  const freshCr = (offset) => String(registerStamp + offset).slice(-10);
+  const freshOwnerEmail = `register-${registerStamp}@company-test.sa`;
+  const userExists = async (email) => Boolean(await db('users').where({ email }).first());
+
+  const freshCompany = await request(app)
+    .post('/api/auth/register-company')
+    .send({
+      company: { name: `شركة فحص التسجيل ${registerStamp}`, cr_number: freshCr(0), city: 'جدة' },
+      owner: { full_name: 'مالك شركة الفحص', email: freshOwnerEmail, password: PASSWORD }
+    });
+  check(
+    'تسجيل شركة جديدة ينجح بـ 201 والشركة ومالكها بحالة pending',
+    freshCompany.status === 201 &&
+      Boolean(freshCompany.body.company) &&
+      freshCompany.body.company.status === 'pending' &&
+      Boolean(freshCompany.body.user) &&
+      freshCompany.body.user.status === 'pending',
+    { status: freshCompany.status, body: freshCompany.body }
+  );
+
+  // السبب هو الحالة لا كلمة المرور: كلمة المرور صحيحة، والرسالة غير رسالة البيانات الخاطئة.
+  const freshLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ email: freshOwnerEmail, password: PASSWORD });
+  check(
+    'الحساب المسجّل حديثاً لا يدخل لأنه بانتظار التوثيق',
+    freshLogin.status === 401 &&
+      !freshLogin.body.token &&
+      Boolean(freshLogin.body.error) &&
+      /بانتظار التوثيق/.test(freshLogin.body.error.message),
+    { status: freshLogin.status, body: freshLogin.body }
+  );
+
+  // سجل تجاري مختلف عمداً: فلا يأتي 409 من تكرار السجل بل من البريد وحده.
+  const duplicateEmail = await request(app)
+    .post('/api/auth/register-company')
+    .send({
+      company: { name: 'شركة ببريد مكرر', cr_number: freshCr(1), city: 'جدة' },
+      owner: { full_name: 'مالك ببريد مكرر', email: freshOwnerEmail, password: PASSWORD }
+    });
+  check(
+    'تسجيل ببريد مسجّل مسبقاً يُرفض بـ 409',
+    duplicateEmail.status === 409 && Boolean(duplicateEmail.body.error) && duplicateEmail.body.error.code === 'conflict',
+    { status: duplicateEmail.status, body: duplicateEmail.body }
+  );
+
+  const noCategoriesEmail = `no-categories-${registerStamp}@supplier-test.sa`;
+  const supplierNoCategories = await request(app)
+    .post('/api/suppliers/register')
+    .send({
+      supplier: { name: 'مورد بلا فئات', cr_number: freshCr(2), city: 'الرياض', category_slugs: [] },
+      admin: { full_name: 'مسؤول مورد بلا فئات', email: noCategoriesEmail, password: PASSWORD }
+    });
+  check(
+    'تسجيل مورد بلا فئات يُرفض بـ 400 ولا يُنشأ له حساب',
+    supplierNoCategories.status === 400 && !(await userExists(noCategoriesEmail)),
+    { status: supplierNoCategories.status, body: supplierNoCategories.body }
+  );
+
+  const shortCrEmail = `short-cr-${registerStamp}@company-test.sa`;
+  const nineDigitCr = await request(app)
+    .post('/api/auth/register-company')
+    .send({
+      company: { name: 'شركة بسجل ناقص', cr_number: '123456789', city: 'جدة' },
+      owner: { full_name: 'مالك بسجل ناقص', email: shortCrEmail, password: PASSWORD }
+    });
+  check(
+    'تسجيل بسجل تجاري من تسعة أرقام يُرفض بـ 400 ولا يُنشأ له حساب',
+    nineDigitCr.status === 400 && !(await userExists(shortCrEmail)),
+    { status: nineDigitCr.status, body: nineDigitCr.body }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

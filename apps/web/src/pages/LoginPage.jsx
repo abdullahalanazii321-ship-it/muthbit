@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { normalizeUser, useSession } from '../lib/session.js';
 import { homeFor } from '../lib/access.js';
@@ -82,6 +82,16 @@ export default function LoginPage() {
             تسجيل الدخول
           </Button>
         </form>
+
+        <p className="mt-6 text-sm text-muted">
+          ليس لديك حساب؟{' '}
+          <Link
+            to="/register"
+            className="rounded-sm font-medium text-ink underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+          >
+            سجّل شركتك أو منشأتك
+          </Link>
+        </p>
       </div>
     </main>
   );

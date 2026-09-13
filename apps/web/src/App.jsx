@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
 import { COMPANY_HOME, PLATFORM_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
@@ -26,6 +27,14 @@ export default function App() {
         element={
           <GuestOnly>
             <LoginPage />
+          </GuestOnly>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <GuestOnly>
+            <RegisterPage />
           </GuestOnly>
         }
       />

@@ -2,7 +2,7 @@
 // رسالة الخطأ تصل عربية من الخادم في error.message وتُمرَّر كما هي — لا تُترجم ولا تُلطَّف.
 
 const FALLBACK_MESSAGE = 'تعذّر تنفيذ الطلب.';
-const NETWORK_MESSAGE = 'تعذّر الوصول إلى الخادم. تأكد أنه يعمل ثم أعد المحاولة.';
+const NETWORK_MESSAGE = 'تعذّر الاتصال بالمنصة. تحقّق من اتصالك بالإنترنت ثم أعد المحاولة.';
 const CONFIG_MESSAGE = 'عنوان الخادم غير مضبوط: أضف VITE_API_URL إلى apps/web/.env ثم أعد تشغيل الواجهة.';
 
 const baseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
