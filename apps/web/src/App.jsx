@@ -3,6 +3,7 @@ import { useSession } from './lib/session.js';
 import { COMPANY_HOME, PLATFORM_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import LandingPage from './pages/LandingPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
@@ -38,8 +39,9 @@ export default function App() {
           </GuestOnly>
         }
       />
+      <Route path="/" element={<PublicHome />} />
       <Route
-        path="/"
+        path="/requests"
         element={
           <RequireSession home={COMPANY_HOME}>
             <RequestsPage />
@@ -104,6 +106,15 @@ export default function App() {
   );
 }
 
+/**
+ * جذر الموقع للجميع بلا حارس: الزائر يرى صفحة التعريف، وصاحب الجلسة يُحوَّل إلى مكانه (homeFor).
+ * لوحة الشركة انتقلت إلى /requests، فمن جاء يعرف ما المنصة لا يُطلب منه حساب أولاً.
+ */
+function PublicHome() {
+  const { session } = useSession();
+  return session ? <Navigate to={homeFor(session.user)} replace /> : <LandingPage />;
+}
+
 /** home: لمن هذا المسار. من كان مكانه غيره يُعاد إلى مكانه. */
 function RequireSession({ home, children }) {
   const { session } = useSession();
@@ -112,7 +123,7 @@ function RequireSession({ home, children }) {
   return userHome === home ? children : <Navigate to={userHome} replace />;
 }
 
-/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى / بلا رسالة — الخادم يرد 403 أصلاً. */
+/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى لوحة الشركة بلا رسالة — الخادم يرد 403 أصلاً. */
 function AllowedOnly({ allowed, children }) {
   const { session } = useSession();
   return allowed(session.user) ? children : <Navigate to={COMPANY_HOME} replace />;

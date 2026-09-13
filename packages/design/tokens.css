@@ -31,6 +31,20 @@
      لتُقرأ علامة الصح داخل المثمّن. */
   --mb-logo-accent: #12857A;
 
+  /* --- الصفحة العامة (التعريف) --- */
+  /* داكنة ثابتة: لا تُعاد في كتلتي الوضع الداكن أدناه، فلا تتبع وضع النظام.
+     للصفحة العامة وحدها — المنصة خلف الدخول لا تستعمل منها شيئاً. */
+  --mb-mkt-ground: #05201E;
+  --mb-mkt-ground-2: #041917;
+  --mb-mkt-surface: #0B2F2B;
+  --mb-mkt-surface-2: #0E3833;
+  --mb-mkt-line: rgba(84, 195, 168, 0.16);
+  --mb-mkt-line-strong: rgba(84, 195, 168, 0.3);
+  --mb-mkt-mint: #54C3A8;
+  --mb-mkt-paper: #EAF3F0;
+  --mb-mkt-muted: #93B2AB;
+  --mb-mkt-sand: #D8C9A3;
+
   /* --- الخطوط --- */
   --mb-font-display: 'Noto Kufi Arabic', 'Archivo', system-ui, sans-serif;
   --mb-font-body: 'IBM Plex Sans Arabic', 'Segoe UI', system-ui, sans-serif;

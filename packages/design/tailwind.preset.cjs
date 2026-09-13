@@ -24,7 +24,18 @@ module.exports = {
         'seal-soft': 'var(--mb-seal-soft)',
         signal: 'var(--mb-signal)',
         'signal-soft': 'var(--mb-signal-soft)',
-        'logo-accent': 'var(--mb-logo-accent)'
+        'logo-accent': 'var(--mb-logo-accent)',
+        // الصفحة العامة وحدها — داكنة ثابتة لا تتبع وضع النظام.
+        'mkt-ground': 'var(--mb-mkt-ground)',
+        'mkt-ground-2': 'var(--mb-mkt-ground-2)',
+        'mkt-surface': 'var(--mb-mkt-surface)',
+        'mkt-surface-2': 'var(--mb-mkt-surface-2)',
+        'mkt-line': 'var(--mb-mkt-line)',
+        'mkt-line-strong': 'var(--mb-mkt-line-strong)',
+        'mkt-mint': 'var(--mb-mkt-mint)',
+        'mkt-paper': 'var(--mb-mkt-paper)',
+        'mkt-muted': 'var(--mb-mkt-muted)',
+        'mkt-sand': 'var(--mb-mkt-sand)'
       },
       fontFamily: {
         display: ['Noto Kufi Arabic', 'Archivo', 'system-ui', 'sans-serif'],

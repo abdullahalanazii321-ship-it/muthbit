@@ -12,7 +12,8 @@ import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import OfferCard from '../components/OfferCard.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 
-const LIST_PATH = '/';
+// قائمة الطلبات — لوحة الشركة. الجذر / صار صفحة التعريف العامة.
+const LIST_PATH = '/requests';
 const OVER_CEILING_TEXT = 'تجاوز المبلغ سقف الطلب الواحد، فرُفع الطلب لمعتمِد أعلى.';
 const APPROVAL_RULE_TEXT = 'القرار للمعتمِد المحدد وحده، ولا يعتمد أحد طلباً أنشأه بنفسه.';
 const REJECTED_NOTICE = 'رُفض الطلب. العرض الذي كان مختاراً عاد إلى حالة «مُقدَّم» وبقي قائماً.';

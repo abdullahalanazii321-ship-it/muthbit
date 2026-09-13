@@ -1,6 +1,7 @@
 // من يصل إلى أين في الواجهة. توجيه فقط — الخادم يحمي كل مسار بنفسه، فلا رسائل صلاحيات هنا.
 
-export const COMPANY_HOME = '/';
+// لوحة الشركة على /requests: الجذر / صار صفحة التعريف العامة للزائر.
+export const COMPANY_HOME = '/requests';
 export const SUPPLIER_HOME = '/supplier';
 export const PLATFORM_HOME = '/platform';
 
@@ -23,7 +24,7 @@ export const APPROVER_ROLES = ['company_owner', 'finance_manager', 'procurement_
 
 /**
  * مكان كل دور: المورد بوابته، ومسؤول المنصة لوحته، وغيرهما لوحة الشركة.
- * مسؤول المنصة بلا شركة، ومسارات الشركة تردّ عليه بخطأ — فمكانه /platform لا /.
+ * مسؤول المنصة بلا شركة، ومسارات الشركة تردّ عليه بخطأ — فمكانه /platform لا /requests.
  */
 export function homeFor(user) {
   if (user?.role === 'supplier_admin') return SUPPLIER_HOME;

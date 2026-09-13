@@ -38,7 +38,7 @@ export default function NewRequestPage() {
     try {
       const data = await apiFetch('/api/requests', { method: 'POST', body });
       const warnings = reasonMessages(data?.policy?.reasons);
-      navigate('/', {
+      navigate('/requests', {
         replace: true,
         state: { created: { reference: data?.request?.reference ?? null, warnings } }
       });
@@ -126,7 +126,7 @@ export default function NewRequestPage() {
               <Button type="submit" disabled={!canSubmit} loading={submitting} loadingText="جارٍ الإرسال…">
                 إرسال الطلب
               </Button>
-              <Button variant="secondary" onClick={() => navigate('/')} disabled={submitting}>
+              <Button variant="secondary" onClick={() => navigate('/requests')} disabled={submitting}>
                 إلغاء
               </Button>
             </div>
