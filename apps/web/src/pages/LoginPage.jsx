@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { normalizeUser, useSession } from '../lib/session.js';
@@ -8,29 +8,68 @@ import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
 
+// اسم الحركة التي يبدؤها tokens.css على input:-webkit-autofill داخل .mb-entrance.
+const AUTOFILL_ANIMATION = 'mb-autofill';
+
 export default function LoginPage() {
   const { signIn } = useSession();
   const navigate = useNavigate();
+  const formRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // كروم يعبّئ الحقلين من كلمات المرور المحفوظة ولا يسلّم الصفحة القيمتين قبل أول تفاعل،
+  // فتبقى الحالة فارغة والحقلان ممتلئان أمام المستخدم والزر معطّلاً. هذه العلامة تفتح الزر حتى يُكشف ما عُبّئ.
+  const [autofilled, setAutofilled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   // 429: الخادم حجب المحاولات لكثرتها. نعطّل الزر ونكتفي برسالته —
   // لا مؤقّت تنازلي ولا إعادة محاولة تلقائية.
   const [rateLimited, setRateLimited] = useState(false);
 
-  const isEmpty = email.trim() === '' || password === '';
+  const isEmpty = !autofilled && (email.trim() === '' || password === '');
+
+  // القيمتان من الحقلين نفسيهما لا من الحالة. الحقل المتحكَّم به يُعاد إلى قيمة الحالة عند كل رسم،
+  // فلو بقيت الحالة فارغة بعد أن كشف كروم ما عبّأه لمُسح الحقلان عند أول رسم تالٍ.
+  function syncFields() {
+    const fields = formRef.current?.elements;
+    const values = {
+      email: fields?.namedItem('email')?.value ?? '',
+      password: fields?.namedItem('password')?.value ?? ''
+    };
+    setEmail(values.email);
+    setPassword(values.password);
+    return values;
+  }
+
+  function handleChange() {
+    // بعد أول كتابة صارت القيم مكشوفة، وما في الحقلين هو الحقيقة.
+    setAutofilled(false);
+    syncFields();
+  }
+
+  function handleAutofill(event) {
+    if (event.animationName !== AUTOFILL_ANIMATION) return;
+    setAutofilled(true);
+    syncFields();
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (isEmpty || submitting || rateLimited) return;
+    if (submitting || rateLimited) return;
+
+    // الضغط تفاعل، فكروم يكشف الآن ما عبّأه.
+    const values = syncFields();
+    if (values.email.trim() === '' || values.password === '') {
+      setAutofilled(false);
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
     try {
       const data = await apiFetch('/api/auth/login', {
         method: 'POST',
-        body: { email: email.trim(), password }
+        body: { email: values.email.trim(), password: values.password }
       });
       signIn(data);
       // كل دور إلى مكانه مباشرة: مسؤول المنصة إلى لوحته، والمورد إلى بوابته، وغيرهما إلى لوحة الشركة.
@@ -42,19 +81,20 @@ export default function LoginPage() {
     }
   }
 
+  // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ground px-4 py-12">
+    <main className="mb-entrance flex min-h-screen items-center justify-center bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة الرأسية: الرمز ثم الاسم تحته.
             aria-hidden على الرمز لأن الاسم مكتوب تحته نصاً مرئياً، وبدونها يُنطق «مثبت» مرتين. */}
         <div className="mb-6 flex flex-col items-start gap-2">
-          <Logo size={64} aria-hidden="true" />
+          <Logo size={64} onDark aria-hidden="true" />
           <span className="font-display text-xl font-semibold text-ink">مثبت</span>
         </div>
         <h1 className="font-display text-2xl font-semibold text-ink">تسجيل الدخول</h1>
 
         {/* noValidate: فقاعة تحقق المتصفح تظهر بلغته، ونريد رسالة الخادم العربية بدلها. */}
-        <form noValidate onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
+        <form ref={formRef} noValidate onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
           <Field
             id="email"
             label="البريد الإلكتروني"
@@ -62,7 +102,8 @@ export default function LoginPage() {
             autoComplete="email"
             dir="ltr"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={handleChange}
+            onAnimationStart={handleAutofill}
             disabled={submitting}
           />
           <Field
@@ -72,7 +113,8 @@ export default function LoginPage() {
             autoComplete="current-password"
             dir="ltr"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={handleChange}
+            onAnimationStart={handleAutofill}
             disabled={submitting}
           />
 

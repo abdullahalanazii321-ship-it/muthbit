@@ -90,6 +90,137 @@
   --mb-logo-accent: #3FC4B2;
 }
 
+/* =========================================================
+   الباب الأمامي: /login و /register
+   رموز المنصة نفسها بقيم الصفحة العامة الداكنة، داخل هذه الحاوية وحدها.
+   المكوّنات (Field و Button و Alert و Logo) لا تتغيّر: تقرأ الرموز فتلتقط القيم الجديدة هنا،
+   وخارج الحاوية تبقى القيم العامة كما هي — المنصة بعد الدخول فاتحة.
+   تُعرَّف على العنصر نفسه، فتغلب ما يرثه من :root في وضعَي النظام الفاتح والداكن معاً.
+   ========================================================= */
+.mb-entrance {
+  --mb-ground: var(--mb-mkt-ground);
+  --mb-surface: var(--mb-mkt-surface);
+  --mb-surface-2: var(--mb-mkt-surface-2);
+  --mb-line: var(--mb-mkt-line);
+  --mb-line-strong: var(--mb-mkt-line-strong);
+  --mb-ink: var(--mb-mkt-paper);
+  --mb-muted: var(--mb-mkt-muted);
+
+  /* الختم نعناعي: الأخضر العميق لا يُرى على الداكن. فالزر الأساسي بخلفية نعناعية ونصّه --mb-surface الداكن
+     (كزر صفحة التعريف)، وحلقة التركيز وحدّ الحقل المركّز ومربّع الاختيار المختار وتنبيه النجاح نعناعية كذلك. */
+  --mb-seal: var(--mb-mkt-mint);
+  --mb-seal-soft: var(--mb-mkt-line);
+
+  /* الإشارة (الخطأ والتحذير): القيمتان المعتمدتان للداكن نفسهما في كتلتي الوضع الداكن أعلاه.
+     قيمتا الفاتح تصنعان صندوقاً فاتحاً على أرضية داكنة. */
+  --mb-signal: #E19257;
+  --mb-signal-soft: #2C2118;
+
+  /* عناصر المتصفح الأصلية بنسختها الداكنة: مربّع الاختيار غير المختار، والتعبئة التلقائية، وشريط التمرير. */
+  color-scheme: dark;
+}
+
+/* preflight في Tailwind يلوّن النص النائب رمادياً ثابتاً، ويأتي بعد هذا الملف؛
+   فالمحدِّد أدق منه ليغلبه — بلون النص الثانوي لا أفتح منه. */
+.mb-entrance input::placeholder,
+.mb-entrance textarea::placeholder {
+  color: var(--mb-muted);
+}
+
+/* الحقل فجوة في البطاقة لا سطح فوقها: أغمق منها. Field يكتب خلفية الحقل بـ bg-surface، والبطاقة كذلك،
+   فيُعاد تعريف --mb-surface على عناصر الإدخال وحدها. الحدّ line-strong، والتركيز حلقة نعناعية (--mb-seal أعلاه). */
+.mb-entrance input,
+.mb-entrance textarea,
+.mb-entrance select {
+  --mb-surface: var(--mb-mkt-ground);
+}
+
+/* نص الزر الأساسي داكن كزر «أنشئ حساب شركتك» في صفحة التعريف: --mb-mkt-ground على النعناعي.
+   Button يكتب نصه بـ text-surface، فيُعاد تعريف --mb-surface على ما خلفيته bg-seal وحده — الزر الأساسي هنا. */
+.mb-entrance .bg-seal {
+  --mb-surface: var(--mb-mkt-ground);
+}
+
+/* التعبئة التلقائية: كروم يفرض خلفيته ولون نصّه ويتجاهل background و color.
+   الخلفية بظل داخلي بلون الحقل، والنص بـ -webkit-text-fill-color — في كل الحالات، وإلا عاد لون كروم عند التمرير
+   أو الضغط أو التركيز. والظل الداخلي يحلّ محل حلقة التركيز (box-shadow أيضاً)، فتُضاف الحلقة النعناعية معه عند التركيز. */
+.mb-entrance input:-webkit-autofill,
+.mb-entrance input:-webkit-autofill:hover,
+.mb-entrance input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--mb-surface) inset;
+  box-shadow: 0 0 0 1000px var(--mb-surface) inset;
+  -webkit-text-fill-color: var(--mb-ink);
+  caret-color: var(--mb-ink);
+}
+
+.mb-entrance input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--mb-surface) inset, 0 0 0 1px var(--mb-seal);
+  box-shadow: 0 0 0 1000px var(--mb-surface) inset, 0 0 0 1px var(--mb-seal);
+  -webkit-text-fill-color: var(--mb-ink);
+  caret-color: var(--mb-ink);
+}
+
+/* كروم لا يُعلم الصفحة بما عبّأه قبل أول تفاعل، فتبقى حالة الحقلين فارغة وزر الدخول معطّلاً والحقلان ممتلئان.
+   بدء هذه الحركة على :-webkit-autofill هو الإشارة الوحيدة المتاحة للصفحة — LoginPage يلتقطها في onAnimationStart.
+   لا أثر مرئي لها: الشفافية 1 من أولها إلى آخرها. */
+@keyframes mb-autofill {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mb-entrance input:-webkit-autofill {
+  animation: mb-autofill 1ms;
+}
+
+/* مربّعات الاختيار عناصر إدخال كالحقول، فتقرأ مثلها: غير المختار غائر بلون الأرضية وحدّ line-strong،
+   والمختار نعناعي بعلامة صح داكنة كالزر الأساسي. accent-color لا يكفي: لا يلوّن إلا المختار،
+   وغير المختار يرسمه المتصفح رمادياً يبدو معطّلاً. المقاس والاستدارة من فئات الصفحة (size-4 و rounded-sm). */
+.mb-entrance input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  margin: 0;
+  border: 1px solid var(--mb-mkt-line-strong);
+  border-radius: var(--mb-radius-sm);
+  background-color: var(--mb-mkt-ground);
+  cursor: pointer;
+}
+
+/* علامة الصح شكلٌ بـ clip-path بلون الرمز — لا صورة ولا لون مكتوب. تظهر مع الاختيار وحده. */
+.mb-entrance input[type='checkbox']::before {
+  content: '';
+  width: 0.625rem;
+  height: 0.625rem;
+  background-color: var(--mb-mkt-ground);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+  transform: scale(0);
+}
+
+.mb-entrance input[type='checkbox']:checked {
+  border-color: var(--mb-mkt-mint);
+  background-color: var(--mb-mkt-mint);
+}
+
+.mb-entrance input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+
+/* الحلقة بمسافة عن المربّع لا ملاصقة له: المختار نعناعي كله، والحلقة الملاصقة لا تُرى عليه. */
+.mb-entrance input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--mb-mkt-mint);
+  outline-offset: 2px;
+}
+
+.mb-entrance input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 html[dir='rtl'] body {
   font-family: var(--mb-font-body);
 }

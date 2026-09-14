@@ -196,12 +196,13 @@ export default function RegisterPage() {
   // فتبديل النوع لا يعيد تفعيل الزر.
   const [rateLimitMessage, setRateLimitMessage] = useState(null);
 
+  // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ground px-4 py-12">
+    <main className="mb-entrance flex min-h-screen items-center justify-center bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة نفسها في شاشة الدخول: الرمز ثم الاسم تحته، و aria-hidden لأن الاسم مكتوب نصاً. */}
         <div className="mb-6 flex flex-col items-start gap-2">
-          <Logo size={64} aria-hidden="true" />
+          <Logo size={64} onDark aria-hidden="true" />
           <span className="font-display text-xl font-semibold text-ink">مثبت</span>
         </div>
 
