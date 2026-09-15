@@ -143,6 +143,20 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
     const supplier = await db('suppliers').where({ id: req.params.id }).first();
     if (!supplier) throw notFound('المورد غير موجود.');
 
+    // الفئات المختارة عند التوثيق قد تكون خارج ما سجّله المورد: فئة أضافها مسؤول المنصة من اقتراحه.
+    // تُفحص كلها قبل المعاملة، فلا يُربط المورد بفئة لا وجود لها.
+    const approveIds = [...new Set(parsed.data.approve_category_ids || [])];
+    let addedCategoryIds = [];
+    if (parsed.data.status === 'verified' && approveIds.length) {
+      const known = await db('categories').whereIn('id', approveIds).pluck('id');
+      if (known.length !== approveIds.length) throw badRequest('توجد فئة غير معروفة ضمن الفئات المختارة.');
+      const linked = await db('supplier_categories')
+        .where({ supplier_id: supplier.id })
+        .whereIn('category_id', approveIds)
+        .pluck('category_id');
+      addedCategoryIds = approveIds.filter((id) => !linked.includes(id));
+    }
+
     const updated = await db.transaction(async (trx) => {
       const [row] = await trx('suppliers')
         .where({ id: supplier.id })
@@ -160,11 +174,17 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
           .where({ supplier_id: supplier.id, status: 'pending' })
           .update({ status: 'active', updated_at: trx.fn.now() });
 
-        const approveQuery = trx('supplier_categories').where({ supplier_id: supplier.id });
-        if (parsed.data.approve_category_ids && parsed.data.approve_category_ids.length) {
-          await approveQuery.whereIn('category_id', parsed.data.approve_category_ids).update({ approved: true, updated_at: trx.fn.now() });
+        if (approveIds.length) {
+          // المسجَّلة تُعتمد، وغير المسجَّلة تُنشأ معتمدة — وهذا وحده ما يربط المورد بفئة أُضيفت من اقتراحه.
+          // وما سجّله ولم يُختر يبقى غير معتمد كما كان.
+          await trx('supplier_categories')
+            .insert(approveIds.map((categoryId) => ({ supplier_id: supplier.id, category_id: categoryId, approved: true })))
+            .onConflict(['supplier_id', 'category_id'])
+            .merge({ approved: true, updated_at: trx.fn.now() });
         } else {
-          await approveQuery.update({ approved: true, updated_at: trx.fn.now() });
+          await trx('supplier_categories')
+            .where({ supplier_id: supplier.id })
+            .update({ approved: true, updated_at: trx.fn.now() });
         }
       }
 
@@ -180,7 +200,13 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
         entityType: 'supplier',
         entityId: supplier.id,
         action: `supplier.${parsed.data.status}`,
-        payload: { from: supplier.verification_status, to: parsed.data.status, reason },
+        payload: {
+          from: supplier.verification_status,
+          to: parsed.data.status,
+          reason,
+          // الفئات التي لم يسجّلها المورد وربطه بها التوثيق — تُقيَّد لأنها قرار المسؤول لا اختيار المورد.
+          ...(addedCategoryIds.length ? { added_category_ids: addedCategoryIds } : {})
+        },
         ip: req.ip
       });
 

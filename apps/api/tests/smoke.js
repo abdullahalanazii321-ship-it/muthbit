@@ -1026,6 +1026,156 @@ async function run() {
     { before: categoriesBefore, after: categoriesAfter, links: suggestOnlyLinks }
   );
 
+  section('٢٣ — الفئات: إضافتها وتسميتها ووصلها باقتراح المورد');
+
+  // الفئات مرجع المطابقة بين الطلبات والموردين، فلا يضيفها ولا يسمّيها إلا مسؤول المنصة.
+  // والمعرّف يُشتق من الاسم الإنجليزي في الخادم ولا يُقبل من العميل.
+  const createCategory = (token, body) => request(app).post('/api/categories').set(auth(token)).send(body);
+  const errorMessageOf = (res) => (res.body.error && res.body.error.message) || null;
+  const CATEGORY_SLUG = 'general-contracting-works';
+  const categoriesBeforeCreate = await countRows('categories');
+
+  // الاسم العربي هو اقتراح مورد القسم ٢٢ حرفياً — الطريق الذي تسلكه بطاقة التوثيق.
+  // والإنجليزي بمسافات ورمزين عمداً: الاشتقاق يحذفهما ويطوي الشرطات.
+  const newCategory = await createCategory(platform.token, {
+    name_ar: SUGGESTED,
+    name_en: ' General Contracting & Works! '
+  });
+  const newCategoryRow = newCategory.body.category || {};
+  const newCategoryId = newCategoryRow.id;
+  const categoryCreatedEvent = newCategoryId
+    ? await db('audit_log').where({ entity_type: 'category', entity_id: newCategoryId, action: 'category.created' }).first()
+    : null;
+  check(
+    'مسؤول المنصة ينشئ فئة والمعرّف مشتق من الاسم الإنجليزي ويُقيَّد الحدث',
+    newCategory.status === 201 &&
+      newCategoryRow.slug === CATEGORY_SLUG &&
+      newCategoryRow.name_ar === SUGGESTED &&
+      newCategoryRow.name_en === 'General Contracting & Works!' &&
+      Boolean(categoryCreatedEvent && categoryCreatedEvent.payload) &&
+      categoryCreatedEvent.payload.slug === CATEGORY_SLUG &&
+      categoryCreatedEvent.payload.name_ar === SUGGESTED,
+    { status: newCategory.status, body: newCategory.body }
+  );
+
+  const noLatin = await createCategory(platform.token, { name_ar: 'فئة بلا حروف لاتينية', name_en: 'مقاولات عامة' });
+  check(
+    'إنشاء فئة باسم إنجليزي بلا حروف لاتينية يُرفض بـ 400',
+    noLatin.status === 400 && errorMessageOf(noLatin) === 'الاسم الإنجليزي يجب أن يحتوي حروفاً لاتينية.',
+    { status: noLatin.status, body: noLatin.body }
+  );
+
+  // اسم عربي آخر، والإنجليزي بصيغة أخرى تُشتق إلى المعرّف نفسه.
+  const duplicateSlug = await createCategory(platform.token, {
+    name_ar: 'أعمال المقاولات العامة',
+    name_en: 'general contracting works'
+  });
+  check(
+    'إنشاء فئة بمعرّف مكرر يُرفض بـ 409',
+    duplicateSlug.status === 409 && errorMessageOf(duplicateSlug) === 'هذه الفئة موجودة مسبقاً.',
+    { status: duplicateSlug.status, body: duplicateSlug.body }
+  );
+
+  // المعرّف هنا جديد، والاسم العربي هو نفسه بعد التشذيب.
+  const duplicateNameAr = await createCategory(platform.token, {
+    name_ar: `  ${SUGGESTED}  `,
+    name_en: 'Contracting services'
+  });
+  check(
+    'إنشاء فئة باسم عربي مكرر يُرفض بـ 409',
+    duplicateNameAr.status === 409 && duplicateNameAr.body.error && duplicateNameAr.body.error.code === 'conflict',
+    { status: duplicateNameAr.status, body: duplicateNameAr.body }
+  );
+
+  const ownerCreates = await createCategory(owner.token, { name_ar: 'فئة من مالك شركة', name_en: 'Owner category' });
+  check('مالك شركة لا ينشئ فئة', ownerCreates.status === 403, { status: ownerCreates.status, body: ownerCreates.body });
+
+  const supplierCreates = await createCategory(supplier.token, { name_ar: 'فئة من مورد', name_en: 'Supplier category' });
+  check(
+    'مورد لا ينشئ فئة، ولم تُنشأ فئة من أي محاولة مرفوضة',
+    supplierCreates.status === 403 && (await countRows('categories')) === categoriesBeforeCreate + 1,
+    { status: supplierCreates.status, body: supplierCreates.body }
+  );
+
+  // القائمة العامة نفسها التي تقرؤها صفحة التسجيل وشاشة الطلب الجديد — بلا رمز.
+  const publicAfterCreate = await request(app).get('/api/categories');
+  check(
+    'الفئة الجديدة تظهر في GET /api/categories',
+    publicAfterCreate.status === 200 &&
+      (publicAfterCreate.body.categories || []).some((c) => c.id === newCategoryId && c.slug === CATEGORY_SLUG),
+    { status: publicAfterCreate.status }
+  );
+
+  // slug في الجسم عمداً: المعرّف لا يتغيّر أبداً، ولو أُرسل.
+  const renamed = await request(app)
+    .patch(`/api/categories/${newCategoryId}`)
+    .set(auth(platform.token))
+    .send({ name_ar: 'المقاولات العامة', name_en: 'General construction', slug: 'renamed-slug' });
+  const renamedRow = newCategoryId ? await db('categories').where({ id: newCategoryId }).first() : null;
+  const renamedEvent = newCategoryId
+    ? await db('audit_log').where({ entity_type: 'category', entity_id: newCategoryId, action: 'category.renamed' }).first()
+    : null;
+  check(
+    'إعادة التسمية تغيّر الاسمين ولا تغيّر المعرّف، والسجل يحفظ قبل وبعد',
+    renamed.status === 200 &&
+      Boolean(renamedRow) &&
+      renamedRow.slug === CATEGORY_SLUG &&
+      renamedRow.name_ar === 'المقاولات العامة' &&
+      renamedRow.name_en === 'General construction' &&
+      Boolean(renamedEvent && renamedEvent.payload && renamedEvent.payload.before && renamedEvent.payload.after) &&
+      renamedEvent.payload.before.name_ar === SUGGESTED &&
+      renamedEvent.payload.after.name_ar === 'المقاولات العامة',
+    { status: renamed.status, body: renamed.body, slug: renamedRow && renamedRow.slug }
+  );
+
+  // التحقق الجوهري: الدائرة كاملة. مورد القسم ٢٢ اقترح فئة ولم يختر غيرها، فأضافها المسؤول
+  // ووثّقه عليها بمسار التوثيق نفسه — فيرى طلباً منشوراً فيها.
+  const verifyOnNewCategory = await request(app)
+    .patch(`/api/suppliers/${suggestOnlyId}/verification`)
+    .set(auth(platform.token))
+    .send({ status: 'verified', source: 'manual', approve_category_ids: [newCategoryId] });
+  const suggestedSupplierLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ email: suggestEmail('suggest-only'), password: PASSWORD });
+  const newCategoryRequest = await request(app)
+    .post('/api/requests')
+    .set(auth(buyer.token))
+    .send({ item: 'ترميم واجهة مبنى الفرع', quantity: 1, category_id: newCategoryId });
+  const newCategoryRequestId = newCategoryRequest.body.request && newCategoryRequest.body.request.id;
+  const suggestedSupplierOpen =
+    suggestedSupplierLogin.status === 200
+      ? await request(app).get('/api/offers/open-requests').set(auth(suggestedSupplierLogin.body.token))
+      : null;
+  check(
+    'مورد رُبط بفئة جديدة واعتُمد فيها يرى طلباً منشوراً في تلك الفئة',
+    verifyOnNewCategory.status === 200 &&
+      suggestedSupplierLogin.status === 200 &&
+      newCategoryRequest.status === 201 &&
+      Boolean(suggestedSupplierOpen) &&
+      suggestedSupplierOpen.status === 200 &&
+      (suggestedSupplierOpen.body.requests || []).some((r) => r.id === newCategoryRequestId),
+    {
+      verify: verifyOnNewCategory.status,
+      login: suggestedSupplierLogin.status,
+      request: newCategoryRequest.status,
+      body: newCategoryRequest.body,
+      open: suggestedSupplierOpen && suggestedSupplierOpen.status
+    }
+  );
+
+  // العدد في جدول الفئات يحسبه الخادم: المورد المعتمد في الفئة وهو موثّق. والمسار للمنصة وحدها.
+  const overviewForPlatform = await request(app).get('/api/categories/overview').set(auth(platform.token));
+  const overviewRow = (overviewForPlatform.body.categories || []).find((c) => c.id === newCategoryId);
+  const overviewForOwner = await request(app).get('/api/categories/overview').set(auth(owner.token));
+  check(
+    'عدد الموردين المعتمدين في الفئة يحسبه الخادم للمنصة وحدها',
+    overviewForPlatform.status === 200 &&
+      Boolean(overviewRow) &&
+      overviewRow.approved_suppliers_count === 1 &&
+      overviewForOwner.status === 403,
+    { platform: overviewForPlatform.status, row: overviewRow, owner: overviewForOwner.status }
+  );
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

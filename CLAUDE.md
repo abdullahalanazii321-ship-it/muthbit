@@ -7,7 +7,7 @@
 إن غمض شيء: قف واسأل. لا تفترض.
 
 ## المكدّس
-- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (٨٥ فحصاً ناجحاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
+- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١١١ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
 - `apps/web` — React + Vite + Tailwind. **مبنيّ بالكامل:** ثماني شاشات (الدخول · الطلبات · طلب جديد · تفاصيل الطلب · بوابة المورد · لوحة المنصة · الفريق · سجل التدقيق).
 - `packages/design` — توكنز الهوية: `tokens.css` و `tokens.js` و `tailwind.preset.cjs`
 
@@ -29,12 +29,18 @@
 ```
 GET    /api/auth/me
 GET    /api/categories
+GET    /api/categories/overview                 (platform_admin)
+POST   /api/categories                          (platform_admin)
+PATCH  /api/categories/:id                      (platform_admin)
 GET    /api/suppliers
 PATCH  /api/suppliers/:id/verification          (platform_admin)
+GET    /api/suppliers/:id/categories            (platform_admin)
+GET    /api/companies                           (platform_admin)
 PATCH  /api/companies/:id/verification          (platform_admin)
 GET    /api/companies/:id/users
 POST   /api/companies/:id/users
 POST   /api/companies/:id/users/:userId/suspend
+POST   /api/companies/:id/users/:userId/activate
 GET    /api/companies/:id/buyers/:userId/limits
 PUT    /api/companies/:id/buyers/:userId/limits
 POST   /api/requests
@@ -103,7 +109,7 @@ GET    /api/audit
 ```
 npm install
 npm run api:migrate && npm run api:seed
-npm run api:test        # ٨٥ فحصاً — يجب أن تمر كلها
+npm run api:test        # ١١١ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 

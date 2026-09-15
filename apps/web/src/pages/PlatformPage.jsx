@@ -25,7 +25,8 @@ import { Badge } from '../components/StatusBadge.jsx';
 
 const TABS = [
   { key: 'companies', label: 'الشركات' },
-  { key: 'suppliers', label: 'الموردون' }
+  { key: 'suppliers', label: 'الموردون' },
+  { key: 'categories', label: 'الفئات' }
 ];
 const TAB_KEYS = TABS.map((tab) => tab.key);
 
@@ -47,6 +48,13 @@ const SOURCES = [
 
 const COMPANY_COLUMNS = ['الاسم', 'السجل التجاري', 'المدينة', 'الحالة', 'تاريخ التسجيل', 'إجراءات'];
 const SUPPLIER_COLUMNS = ['الاسم', 'السجل التجاري', 'المدينة', 'حالة التوثيق', 'التقييم', 'إجراءات'];
+const CATEGORY_COLUMNS = ['الاسم العربي', 'الاسم الإنجليزي', 'المعرّف', 'الموردون المعتمدون', 'إجراءات'];
+
+// حدود مخطط الفئة في الخادم (categories.routes.js)، ورسائله منسوخة منه حرفياً.
+const CATEGORY_NAME_MIN = 2;
+const CATEGORY_NAME_MAX = 120;
+const SLUG_MAX = 60;
+const NO_LATIN_MESSAGE = 'الاسم الإنجليزي يجب أن يحتوي حروفاً لاتينية.';
 const SKELETON_ROWS = 5;
 const AUDIT_LIMIT = 100;
 
@@ -72,7 +80,8 @@ export default function PlatformPage() {
   const requestedView = params.get('view');
   const view = INSPECT_KEYS.includes(requestedView) ? requestedView : 'requests';
 
-  const statuses = tab === 'companies' ? COMPANY_STATUSES : SUPPLIER_STATUSES;
+  // الفئات بلا تصفية حالة، فلا يُقرأ لها ?status=.
+  const statuses = tab === 'companies' ? COMPANY_STATUSES : tab === 'suppliers' ? SUPPLIER_STATUSES : [];
   const requestedStatus = params.get('status');
   const statusFilter = statuses.includes(requestedStatus) ? requestedStatus : '';
 
@@ -113,8 +122,10 @@ export default function PlatformPage() {
               view={view}
               onView={selectView}
             />
-          ) : (
+          ) : tab === 'suppliers' ? (
             <SuppliersTab statusFilter={statusFilter} onStatus={selectStatus} />
+          ) : (
+            <CategoriesTab />
           )}
         </div>
       </main>
@@ -626,8 +637,14 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
   const [selected, setSelected] = useState(null);
   const [source, setSource] = useState('manual');
 
+  // فئات أضافها المسؤول من اقتراح المورد في هذه البطاقة: تنضم إلى القائمة مختارة،
+  // والتوثيق يربط المورد بها (الخادم ينشئ الارتباط لما لم يسجّله المورد).
+  const [added, setAdded] = useState([]);
+  const [adding, setAdding] = useState(false);
+
   const ready = categories.status === 'ready';
-  const list = ready ? categories.data.categories : [];
+  const fetched = ready ? categories.data.categories : [];
+  const list = [...fetched, ...added.filter((item) => !fetched.some((category) => category.id === item.id))];
   const chosen = selected ?? [];
   // نص كتبه المورد حين لم يجد فئته، يصل مع فئاته من المسار نفسه. يُعرض للمورد بانتظار التوثيق وحده.
   const suggested =
@@ -648,6 +665,12 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
     onDone(`وُثّق المورد «${supplier.name}».`);
   });
 
+  function handleAdded(category) {
+    setAdding(false);
+    setAdded((current) => [...current, { ...category, approved: false }]);
+    setSelected((current) => [...(current ?? []), category.id]);
+  }
+
   function toggle(id) {
     setSelected((current) => {
       const value = current ?? [];
@@ -662,6 +685,7 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
         <ul className="mt-2 list-disc space-y-1 ps-5">
           <li>تفعيل حسابات المورد المعلّقة، فيستطيع الدخول وتقديم العروض.</li>
           <li>اعتماد فئاته على ما تختاره أدناه.</li>
+          {added.length > 0 && <li className="font-semibold">ربط المورد بالفئة التي أضفتها هنا إن بقيت مختارة.</li>}
         </ul>
       </Alert>
 
@@ -671,9 +695,31 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
         {/* نص كتبه المورد لا قيمة من النظام: بلون الإشارة لا بمظهر الفئات، وبلا مربّع اختيار —
             الاعتماد أدناه للفئات المسجّلة وحدها. ليس role="alert": سطر ثابت يُقرأ، لا خطأ يُعلَن. */}
         {suggested && (
-          <p className="mt-3 rounded border border-signal bg-signal-soft px-3 py-2.5 text-sm text-signal">
-            فئة مقترحة من المورد: <bdi className="font-semibold">{suggested}</bdi>
-          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="rounded border border-signal bg-signal-soft px-3 py-2.5 text-sm text-signal">
+                فئة مقترحة من المورد: <bdi className="font-semibold">{suggested}</bdi>
+              </p>
+              {/* الاقتراح يصير فئة مرة واحدة: بعد إضافتها يختفي الزر، وتظهر الفئة أدناه مختارة. */}
+              {!adding && added.length === 0 && (
+                <Button variant="secondary" onClick={() => setAdding(true)} disabled={action.sending}>
+                  أضف هذه الفئة
+                </Button>
+              )}
+            </div>
+
+            {adding && (
+              <div className="rounded border border-line p-4">
+                <CategoryForm initialNameAr={suggested} onSaved={handleAdded} onCancel={() => setAdding(false)} />
+              </div>
+            )}
+
+            {added.length > 0 && (
+              <p role="status" className="text-sm text-muted">
+                أُضيفت فئة «{added[added.length - 1].name_ar}» واختيرت أدناه.
+              </p>
+            )}
+          </div>
         )}
 
         {categories.status === 'loading' && (
@@ -738,7 +784,8 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
       {action.error && <Alert>{action.error}</Alert>}
 
       <div className="flex flex-wrap gap-3">
-        <Button onClick={action.submit} loading={action.sending} loadingText="جارٍ التوثيق…">
+        {/* نموذج الإضافة مفتوح = قرار لم يُحفظ بعد؛ التوثيق الآن يتجاوزه بسكوت، فيُنتظر حفظه أو التراجع عنه. */}
+        <Button onClick={action.submit} disabled={adding} loading={action.sending} loadingText="جارٍ التوثيق…">
           تأكيد التوثيق
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={action.sending}>
@@ -849,6 +896,215 @@ function SuspendSupplier({ supplier, onDone, onCancel }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ───────────────────────────── الفئات ───────────────────────────── */
+
+/**
+ * الفئات مرجع المطابقة بين الطلبات والموردين. المسؤول يضيفها ويسمّيها ولا يحذفها:
+ * الحذف يهدم ارتباطات الموردين والطلبات المعلّقة بها.
+ * العدد في الجدول من الخادم لا من الواجهة: المورد المعتمد في الفئة وهو موثّق اليوم.
+ */
+function CategoriesTab() {
+  const categories = useResource('/api/categories/overview', isCategoriesResponse);
+  const list = categories.status === 'ready' ? categories.data.categories : null;
+
+  // لوحة واحدة مفتوحة في كل مرة: { kind: 'create' } أو { kind: 'rename', category }
+  const [panel, setPanel] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  function openPanel(next) {
+    setNotice(null);
+    setPanel(next);
+  }
+
+  // بعد الحفظ تُعاد القائمة من الخادم، فتظهر الفئة بعددها كما حسبه — لا صف مخمَّن محلياً.
+  function finish(text) {
+    setPanel(null);
+    setNotice(text);
+    categories.reload();
+  }
+
+  return (
+    <div>
+      <Button onClick={() => openPanel({ kind: 'create' })}>أضف فئة</Button>
+
+      {notice && (
+        <div className="mt-6">
+          <Alert tone="seal">{notice}</Alert>
+        </div>
+      )}
+
+      {panel?.kind === 'create' && (
+        <PanelCard key="create" title="إضافة فئة">
+          <CategoryForm
+            onSaved={(category) => finish(`أُضيفت فئة «${category.name_ar}».`)}
+            onCancel={() => setPanel(null)}
+          />
+        </PanelCard>
+      )}
+      {panel?.kind === 'rename' && (
+        <PanelCard key={`rename-${panel.category.id}`} title={`إعادة تسمية ${panel.category.name_ar}`}>
+          <CategoryForm
+            category={panel.category}
+            onSaved={(category) => finish(`صار اسم الفئة «${category.name_ar}».`)}
+            onCancel={() => setPanel(null)}
+          />
+        </PanelCard>
+      )}
+
+      <div className="mt-6">
+        {categories.status === 'loading' && <CategoriesTable loading />}
+
+        {categories.status === 'error' && <LoadError message={categories.error.message} onRetry={categories.reload} />}
+
+        {categories.status === 'ready' && list.length === 0 && (
+          <EmptyState text="لا توجد فئات بعد" filtered={false} />
+        )}
+
+        {categories.status === 'ready' && list.length > 0 && (
+          <>
+            {categories.refreshing && <Refreshing />}
+            <CategoriesTable
+              categories={list}
+              busy={categories.refreshing}
+              onRename={(category) => openPanel({ kind: 'rename', category })}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CategoriesTable({ loading = false, categories = [], busy = false, onRename }) {
+  const cell = 'whitespace-nowrap px-4 py-3';
+  return (
+    <TableShell columns={CATEGORY_COLUMNS} loading={loading}>
+      {categories.map((category) => (
+        <tr key={category.id} className="border-t border-line">
+          <td className="px-4 py-3 text-ink">{category.name_ar}</td>
+          <td className={cell}>
+            <bdi dir="ltr">{category.name_en}</bdi>
+          </td>
+          <td className={`${cell} font-mono`}>
+            <bdi dir="ltr">{category.slug}</bdi>
+          </td>
+          <td className={`${cell} tabular-nums`}>{category.approved_suppliers_count ?? '—'}</td>
+          <td className={cell}>
+            <Button variant="secondary" onClick={() => onRename(category)} disabled={busy}>
+              إعادة تسمية
+            </Button>
+          </td>
+        </tr>
+      ))}
+    </TableShell>
+  );
+}
+
+/**
+ * اشتقاق المعرّف من الاسم الإنجليزي — منسوخ حرفياً من categories.routes.js،
+ * فما يُعرض وهو يُكتب هو ما سيحفظه الخادم. والخادم وحده يقرّر: هذا للعرض.
+ */
+function slugFromNameEn(nameEn) {
+  return nameEn
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SLUG_MAX)
+    .replace(/-+$/, '');
+}
+
+/**
+ * نموذج الفئة: إضافة (بلا category) أو إعادة تسمية (بـ category).
+ * المعرّف لا يُكتب أبداً: في الإضافة يُعرض مشتقاً وهو يُكتب، وفي التسمية يُعرض ثابتاً —
+ * هو الرابط بين الموردين والطلبات.
+ * عند الخطأ يبقى النموذج مفتوحاً بما كُتب فيه، ورسالة الخادم كما وردت.
+ */
+function CategoryForm({ category = null, initialNameAr = '', onSaved, onCancel }) {
+  const nameArId = useId();
+  const nameEnId = useId();
+  const renaming = Boolean(category);
+  const [nameAr, setNameAr] = useState(renaming ? category.name_ar : initialNameAr);
+  const [nameEn, setNameEn] = useState(renaming ? category.name_en : '');
+
+  const trimmedAr = nameAr.trim();
+  const trimmedEn = nameEn.trim();
+  const slug = renaming ? category.slug : slugFromNameEn(trimmedEn);
+  const withinLimits = (value) => value.length >= CATEGORY_NAME_MIN && value.length <= CATEGORY_NAME_MAX;
+  const changed = !renaming || trimmedAr !== category.name_ar || trimmedEn !== category.name_en;
+  const ready = withinLimits(trimmedAr) && withinLimits(trimmedEn) && Boolean(slug) && changed;
+
+  const action = useAction(async () => {
+    const body = { name_ar: trimmedAr, name_en: trimmedEn };
+    const data = renaming
+      ? await apiFetch(`/api/categories/${encodeURIComponent(category.id)}`, { method: 'PATCH', body })
+      : await apiFetch('/api/categories', { method: 'POST', body });
+    if (!data?.category?.id) throw new Error('unexpected response shape');
+    onSaved(data.category);
+  });
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    if (ready) action.submit();
+  }
+
+  const slugHint = renaming ? (
+    <p className="text-muted">
+      المعرّف ثابت لا يتغيّر:{' '}
+      <bdi dir="ltr" className="font-mono text-ink">
+        {slug}
+      </bdi>
+    </p>
+  ) : trimmedEn && !slug ? (
+    <p className="text-signal">{NO_LATIN_MESSAGE}</p>
+  ) : (
+    <p className="text-muted">
+      المعرّف:{' '}
+      <bdi dir="ltr" className="font-mono text-ink">
+        {slug || '—'}
+      </bdi>
+    </p>
+  );
+
+  return (
+    <form noValidate onSubmit={handleSubmit} className="flex max-w-measure flex-col gap-5">
+      <Field
+        id={nameArId}
+        label="الاسم العربي"
+        value={nameAr}
+        onChange={(event) => setNameAr(event.target.value)}
+        maxLength={CATEGORY_NAME_MAX}
+        disabled={action.sending}
+      />
+      <Field
+        id={nameEnId}
+        label="الاسم الإنجليزي"
+        dir="ltr"
+        value={nameEn}
+        onChange={(event) => setNameEn(event.target.value)}
+        maxLength={CATEGORY_NAME_MAX}
+        disabled={action.sending}
+        // الاسم العربي جاء معبّأً من اقتراح المورد، فالانتظار عند الإنجليزي.
+        autoFocus={Boolean(initialNameAr)}
+        hint={slugHint}
+      />
+
+      {action.error && <Alert>{action.error}</Alert>}
+
+      <div className="flex flex-wrap gap-3">
+        <Button type="submit" disabled={!ready} loading={action.sending} loadingText="جارٍ الحفظ…">
+          {renaming ? 'حفظ الاسمين' : 'إضافة الفئة'}
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={action.sending}>
+          تراجع
+        </Button>
+      </div>
+    </form>
   );
 }
 
