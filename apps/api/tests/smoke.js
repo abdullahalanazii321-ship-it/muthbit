@@ -819,6 +819,8 @@ async function run() {
     { status: duplicateEmail.status, body: duplicateEmail.body }
   );
 
+  // العقد تغيّر: المورد بلا فئة من القائمة يُقبل إن كتب فئته المقترحة (القسم ٢٢).
+  // والرفض باقٍ حين يغيب الاثنان معاً — وبرسالة تدلّه على الطريق الثاني.
   const noCategoriesEmail = `no-categories-${registerStamp}@supplier-test.sa`;
   const supplierNoCategories = await request(app)
     .post('/api/suppliers/register')
@@ -827,8 +829,11 @@ async function run() {
       admin: { full_name: 'مسؤول مورد بلا فئات', email: noCategoriesEmail, password: PASSWORD }
     });
   check(
-    'تسجيل مورد بلا فئات يُرفض بـ 400 ولا يُنشأ له حساب',
-    supplierNoCategories.status === 400 && !(await userExists(noCategoriesEmail)),
+    'تسجيل مورد بلا فئات وبلا فئة مقترحة يُرفض بـ 400 ولا يُنشأ له حساب',
+    supplierNoCategories.status === 400 &&
+      Boolean(supplierNoCategories.body.error) &&
+      supplierNoCategories.body.error.message === 'اختر فئة واحدة على الأقل، أو اكتب فئتك إن لم تجدها.' &&
+      !(await userExists(noCategoriesEmail)),
     { status: supplierNoCategories.status, body: supplierNoCategories.body }
   );
 
@@ -918,6 +923,107 @@ async function run() {
       closedRow.status === 'withdrawn' &&
       Number(closedRow.price) === 12000,
     { status: afterClose.status, body: afterClose.body, row: closedRow && closedRow.status }
+  );
+
+  section('٢٢ — الفئة المقترحة من المورد');
+
+  // اقتراح لا فئة: يُحفظ نصاً في suppliers، ولا يُنشأ منه صف في categories ولا في supplier_categories.
+  // الرسالة منسوخة من الخادم ومن نموذج التسجيل حرفياً.
+  const SUGGESTED = 'مقاولات عامة';
+  const SUGGESTED_LENGTH_MESSAGE = 'الفئة المقترحة من 2 إلى 100 محرف.';
+  const countRows = async (table, where = {}) => Number((await db(table).where(where).count('* as n').first()).n);
+  const suggestEmail = (key) => `${key}-${registerStamp}@supplier-test.sa`;
+  // السجل التجاري من freshCr في القسم ٢٠ بإزاحات لم تُستعمل هناك.
+  const registerWithSuggestion = (key, offset, fields) =>
+    request(app)
+      .post('/api/suppliers/register')
+      .send({
+        supplier: { name: `مورد فحص الفئة المقترحة ${offset}`, cr_number: freshCr(offset), city: 'الرياض', ...fields },
+        admin: { full_name: 'مسؤول مورد الفحص', email: suggestEmail(key), password: PASSWORD }
+      });
+  const supplierFieldErrors = (res) =>
+    (res.body.error &&
+      res.body.error.details &&
+      res.body.error.details.fieldErrors &&
+      res.body.error.details.fieldErrors.supplier) ||
+    [];
+
+  const categoriesBefore = await countRows('categories');
+
+  // بمسافات حوله عمداً: المخزَّن هو النص مشذّباً.
+  const suggestOnly = await registerWithSuggestion('suggest-only', 3, {
+    category_slugs: [],
+    suggested_category: `  ${SUGGESTED}  `
+  });
+  const suggestOnlyId = suggestOnly.body.supplier && suggestOnly.body.supplier.id;
+  const suggestOnlyRow = suggestOnlyId ? await db('suppliers').where({ id: suggestOnlyId }).first() : null;
+  const suggestOnlyAudit = suggestOnlyId
+    ? await db('audit_log').where({ entity_type: 'supplier', entity_id: suggestOnlyId, action: 'supplier.registered' }).first()
+    : null;
+  check(
+    'تسجيل مورد بفئة مقترحة بلا فئة من القائمة ينجح ويُخزَّن النص مشذّباً ويصل إلى سجل التدقيق',
+    suggestOnly.status === 201 &&
+      Boolean(suggestOnlyRow) &&
+      suggestOnlyRow.suggested_category === SUGGESTED &&
+      Boolean(suggestOnlyAudit && suggestOnlyAudit.payload) &&
+      suggestOnlyAudit.payload.suggested_category === SUGGESTED,
+    { status: suggestOnly.status, body: suggestOnly.body, stored: suggestOnlyRow && suggestOnlyRow.suggested_category }
+  );
+
+  const withBoth = await registerWithSuggestion('suggest-and-list', 4, {
+    category_slugs: ['it'],
+    suggested_category: SUGGESTED
+  });
+  const withBothId = withBoth.body.supplier && withBoth.body.supplier.id;
+  const withBothRow = withBothId ? await db('suppliers').where({ id: withBothId }).first() : null;
+  const withBothLinks = withBothId
+    ? await db('supplier_categories')
+        .join('categories', 'categories.id', 'supplier_categories.category_id')
+        .where('supplier_categories.supplier_id', withBothId)
+        .select('categories.slug')
+    : [];
+  check(
+    'تسجيل مورد بفئة من القائمة واقتراح معاً ينجح ويُحفظ كلاهما',
+    withBoth.status === 201 &&
+      Boolean(withBothRow) &&
+      withBothRow.suggested_category === SUGGESTED &&
+      withBothLinks.length === 1 &&
+      withBothLinks[0].slug === 'it',
+    { status: withBoth.status, body: withBoth.body, links: withBothLinks.map((l) => l.slug) }
+  );
+
+  // بفئة صحيحة من القائمة في الحالتين: فالرفض سببه الاقتراح وحده لا غياب الفئات.
+  const blankSuggestion = await registerWithSuggestion('suggest-blank', 5, {
+    category_slugs: ['it'],
+    suggested_category: '     '
+  });
+  check(
+    'اقتراح من مسافات فقط يُرفض بـ 400 ولا يُنشأ له حساب',
+    blankSuggestion.status === 400 &&
+      supplierFieldErrors(blankSuggestion).includes(SUGGESTED_LENGTH_MESSAGE) &&
+      !(await userExists(suggestEmail('suggest-blank'))),
+    { status: blankSuggestion.status, body: blankSuggestion.body }
+  );
+
+  const longSuggestion = await registerWithSuggestion('suggest-long', 6, {
+    category_slugs: ['it'],
+    suggested_category: 'م'.repeat(101)
+  });
+  check(
+    'اقتراح أطول من مئة محرف يُرفض بـ 400 ولا يُنشأ له حساب',
+    longSuggestion.status === 400 &&
+      supplierFieldErrors(longSuggestion).includes(SUGGESTED_LENGTH_MESSAGE) &&
+      !(await userExists(suggestEmail('suggest-long'))),
+    { status: longSuggestion.status, body: longSuggestion.body }
+  );
+
+  // التحقق الجوهري: الاقتراح لم يصر فئة، ولم يُربط به المورد.
+  const categoriesAfter = await countRows('categories');
+  const suggestOnlyLinks = suggestOnlyId ? await countRows('supplier_categories', { supplier_id: suggestOnlyId }) : -1;
+  check(
+    'الاقتراح لا يُنشئ فئة: عدد صفوف categories لم يتغيّر ولا صف في supplier_categories لمورد الاقتراح',
+    categoriesAfter === categoriesBefore && suggestOnlyLinks === 0,
+    { before: categoriesBefore, after: categoriesAfter, links: suggestOnlyLinks }
   );
 
   console.log(`\n${'='.repeat(58)}`);

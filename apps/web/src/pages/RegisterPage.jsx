@@ -48,6 +48,9 @@ const CITY_MAX = 80;
 const PERSON_NAME_MAX = 160;
 const PHONE_MAX = 30;
 const PASSWORD_MIN = 8;
+// حدّ الفئة المقترحة بعد التشذيب — في مخطط المورد وحده.
+const SUGGESTED_CATEGORY_MIN = 2;
+const SUGGESTED_CATEGORY_MAX = 100;
 
 const CR_PATTERN = /^\d{10}$/;
 // نمط zod نفسه (node_modules/zod/v3/types.js) منسوخاً حرفياً: لا يقبل النموذج بريداً يرفضه الخادم.
@@ -63,7 +66,8 @@ const MESSAGES = {
   email: 'البريد الإلكتروني غير صحيح.',
   password: 'كلمة المرور 8 محارف على الأقل.',
   passwordMismatch: 'كلمتا المرور غير متطابقتين.',
-  categories: 'اختر فئة واحدة على الأقل.'
+  categories: 'اختر فئة واحدة على الأقل، أو اكتب فئتك إن لم تجدها.',
+  suggestedCategory: 'الفئة المقترحة من 2 إلى 100 محرف.'
 };
 
 const EMPTY_FORM = {
@@ -71,6 +75,8 @@ const EMPTY_FORM = {
   crNumber: '',
   vatNumber: '',
   city: '',
+  // نموذج المورد وحده، وحين يُحدَّد «أخرى».
+  suggestedCategory: '',
   fullName: '',
   email: '',
   phone: '',
@@ -85,6 +91,7 @@ const FIELD_ORDER = [
   'vatNumber',
   'city',
   'categories',
+  'suggestedCategory',
   'fullName',
   'email',
   'phone',
@@ -108,8 +115,11 @@ function toLatinDigits(value) {
   });
 }
 
-/** slugs: null لنموذج الشركة (بلا فئات)، ومصفوفة المختار لنموذج المورد. */
-function validate(form, slugs) {
+/**
+ * choice: null لنموذج الشركة (بلا فئات)، ولنموذج المورد { slugs, other }:
+ * المختار من القائمة، وهل حُدّد «أخرى». الحدّ ورسالته كما في مخطط الخادم.
+ */
+function validate(form, choice) {
   const errors = {};
   const present = (name, value) => {
     if (!value) errors[name] = MESSAGES.required;
@@ -122,7 +132,18 @@ function validate(form, slugs) {
   const crNumber = form.crNumber.trim();
   if (present('crNumber', crNumber) && !CR_PATTERN.test(crNumber)) errors.crNumber = MESSAGES.crNumber;
 
-  if (slugs && slugs.length === 0) errors.categories = MESSAGES.categories;
+  // «أخرى» محدَّد: حقله مطلوب ويُحدّ طوله. غير محدَّد: فئة واحدة من القائمة على الأقل.
+  if (choice?.other) {
+    const suggested = form.suggestedCategory.trim();
+    if (
+      present('suggestedCategory', suggested) &&
+      (suggested.length < SUGGESTED_CATEGORY_MIN || suggested.length > SUGGESTED_CATEGORY_MAX)
+    ) {
+      errors.suggestedCategory = MESSAGES.suggestedCategory;
+    }
+  } else if (choice && choice.slugs.length === 0) {
+    errors.categories = MESSAGES.categories;
+  }
 
   const fullName = form.fullName.trim();
   if (present('fullName', fullName) && fullName.length < NAME_MIN) errors.fullName = MESSAGES.nameTooShort;
@@ -150,7 +171,11 @@ function buildBody(kind, form, slugs) {
     vat_number: optionalValue(form.vatNumber),
     city: optionalValue(form.city)
   };
-  if (kind.withCategories) entity.category_slugs = slugs;
+  if (kind.withCategories) {
+    entity.category_slugs = slugs;
+    // الحقل يُفرَّغ مع إلغاء «أخرى»، فالفارغ لا يُرسل والخادم يخزّن null.
+    entity.suggested_category = optionalValue(form.suggestedCategory);
+  }
 
   return {
     [kind.entityKey]: entity,
@@ -264,6 +289,7 @@ function KindChooser({ onChoose }) {
 function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, onRateLimited }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [selectedSlugs, setSelectedSlugs] = useState([]);
+  const [otherChecked, setOtherChecked] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [groupErrors, setGroupErrors] = useState(NO_GROUP_ERRORS);
   // { status, message } — status لتمييز 409 الذي يحمل رابط الدخول تحته.
@@ -274,6 +300,9 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
   // المورد بلا فئات محمّلة لا يُرسل: تعذّر جلبها، أو ما زالت تُحمَّل، أو القائمة فارغة.
   const categoriesBlocked =
     kind.withCategories && !(categories.status === 'ready' && categories.items.length > 0);
+  // والزر معطّل كذلك حتى يختار المورد فئة من القائمة أو يكتب فئته في «أخرى».
+  const categoriesMissing =
+    kind.withCategories && selectedSlugs.length === 0 && !(otherChecked && form.suggestedCategory.trim());
 
   function update(name) {
     return (event) => {
@@ -286,6 +315,13 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
   function toggleCategory(slug) {
     setSelectedSlugs((current) => (current.includes(slug) ? current.filter((item) => item !== slug) : [...current, slug]));
     setFieldErrors((current) => (current.categories ? { ...current, categories: undefined } : current));
+  }
+
+  // الإلغاء يُخفي الحقل ويُفرغه: لا يُرسل نص لم يعد صاحبه يراه.
+  function toggleOther() {
+    setOtherChecked((current) => !current);
+    setForm((current) => ({ ...current, suggestedCategory: '' }));
+    setFieldErrors((current) => ({ ...current, categories: undefined, suggestedCategory: undefined }));
   }
 
   // ما يشترك فيه كل حقل: المعرّف والقيمة والتعطيل، وتحته رسالة خطئه أو إرشاده.
@@ -307,7 +343,7 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
 
     // بترتيب القائمة لا بترتيب النقر، ومما وصل من الخادم وحده.
     const slugs = categories.items.filter((item) => selectedSlugs.includes(item.slug)).map((item) => item.slug);
-    const errors = validate(form, kind.withCategories ? slugs : null);
+    const errors = validate(form, kind.withCategories ? { slugs, other: otherChecked } : null);
     setFieldErrors(errors);
     setGroupErrors(NO_GROUP_ERRORS);
     setServerError(null);
@@ -329,7 +365,9 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
         name: entity?.name ?? body[kind.entityKey].name,
         // الخادم لا يعيد cr_number في رد التسجيل، ويخزّن ما أُرسل كما هو بلا تحويل —
         // فالمعروض هو المخزَّن حرفاً بحرف.
-        crNumber: body[kind.entityKey].cr_number
+        crNumber: body[kind.entityKey].cr_number,
+        // وكذلك الفئة المقترحة: الخادم يشذّبها كما شُذّبت هنا، فالمعروض هو المخزَّن.
+        suggestedCategory: body[kind.entityKey].suggested_category ?? null
       });
     } catch (err) {
       setSubmitting(false);
@@ -381,9 +419,19 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
             categories={categories}
             selected={selectedSlugs}
             onToggle={toggleCategory}
+            other={otherChecked}
+            onToggleOther={toggleOther}
             error={fieldErrors.categories}
             disabled={submitting}
-          />
+          >
+            {otherChecked && (
+              <Field
+                label="اكتب فئتك"
+                autoComplete="off"
+                {...fieldProps('suggestedCategory', <p className="text-muted">سنراجعها قبل التفعيل.</p>)}
+              />
+            )}
+          </CategoriesPicker>
         )}
       </FieldGroup>
 
@@ -427,12 +475,16 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
 
         <Button
           type="submit"
-          disabled={Boolean(rateLimitMessage) || categoriesBlocked}
+          disabled={Boolean(rateLimitMessage) || categoriesBlocked || categoriesMissing}
           loading={submitting}
           loadingText="جارٍ الإرسال…"
         >
           إرسال طلب التسجيل
         </Button>
+        {/* الزر المعطّل يقول لماذا، وإلا ظن المورد المنصة معطّلة. */}
+        {categoriesMissing && !categoriesBlocked && !rateLimitMessage && (
+          <p className="text-sm text-muted">{MESSAGES.categories}</p>
+        )}
       </div>
     </form>
   );
@@ -454,8 +506,11 @@ function FieldGroup({ legend, messages, children }) {
   );
 }
 
-/** مربعات اختيار متعددة لا قائمة منسدلة: المورد يرى الفئات كلها أمامه ويختار ما يخدمه. */
-function CategoriesPicker({ categories, selected, onToggle, error, disabled }) {
+/**
+ * مربعات اختيار متعددة لا قائمة منسدلة: المورد يرى الفئات كلها أمامه ويختار ما يخدمه.
+ * وتحتها «أخرى» لمن لم يجد فئته، و children حقلها النصي حين يُحدَّد.
+ */
+function CategoriesPicker({ categories, selected, onToggle, other, onToggleOther, error, disabled, children }) {
   const errorId = `${fieldId('categories')}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error ? errorId : undefined}>
@@ -484,21 +539,36 @@ function CategoriesPicker({ categories, selected, onToggle, error, disabled }) {
       )}
 
       {categories.status === 'ready' && categories.items.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {categories.items.map((category, index) => (
-            <label key={category.slug} className="flex items-center gap-2 text-sm text-ink">
-              <input
-                type="checkbox"
-                id={index === 0 ? fieldId('categories') : undefined}
-                className="size-4 rounded-sm border-line-strong accent-seal"
-                checked={selected.includes(category.slug)}
-                onChange={() => onToggle(category.slug)}
-                disabled={disabled}
-              />
-              {category.name_ar}
-            </label>
-          ))}
-        </div>
+        <>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {categories.items.map((category, index) => (
+              <label key={category.slug} className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  id={index === 0 ? fieldId('categories') : undefined}
+                  className="size-4 rounded-sm border-line-strong accent-seal"
+                  checked={selected.includes(category.slug)}
+                  onChange={() => onToggle(category.slug)}
+                  disabled={disabled}
+                />
+                {category.name_ar}
+              </label>
+            ))}
+          </div>
+
+          {/* تحت الشبكة لا بين فئاتها: ما يُكتب هنا اقتراح يراجعه فريق المنصة، لا فئة تُختار. */}
+          <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="size-4 rounded-sm border-line-strong accent-seal"
+              checked={other}
+              onChange={onToggleOther}
+              disabled={disabled}
+            />
+            أخرى
+          </label>
+          {children && <div className="mt-3">{children}</div>}
+        </>
       )}
 
       {error && (
@@ -573,6 +643,13 @@ function RegistrationReceived({ result }) {
           <bdi className="font-mono">{result.crNumber}</bdi>
         </Detail>
       </dl>
+
+      {result.suggestedCategory && (
+        <p className="mt-6 text-sm text-ink">
+          فئتك المقترحة: <bdi className="font-semibold">{result.suggestedCategory}</bdi> — سنراجعها ونربطها بالفئة
+          المناسبة.
+        </p>
+      )}
 
       <Button as={Link} to="/login" className="mt-8">
         العودة إلى تسجيل الدخول

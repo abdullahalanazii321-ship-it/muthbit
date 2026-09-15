@@ -629,6 +629,11 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
   const ready = categories.status === 'ready';
   const list = ready ? categories.data.categories : [];
   const chosen = selected ?? [];
+  // نص كتبه المورد حين لم يجد فئته، يصل مع فئاته من المسار نفسه. يُعرض للمورد بانتظار التوثيق وحده.
+  const suggested =
+    ready && supplier.verification_status === 'pending' && typeof categories.data.suggested_category === 'string'
+      ? categories.data.suggested_category.trim()
+      : '';
 
   // ما هو معتمد اليوم يبدأ مؤشَّراً، فلا يسحب التوثيقُ اعتماداً قائماً بسكوت المستخدم.
   useEffect(() => {
@@ -662,6 +667,14 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
 
       <fieldset>
         <legend className="text-sm font-medium text-ink">الفئات المعتمدة</legend>
+
+        {/* نص كتبه المورد لا قيمة من النظام: بلون الإشارة لا بمظهر الفئات، وبلا مربّع اختيار —
+            الاعتماد أدناه للفئات المسجّلة وحدها. ليس role="alert": سطر ثابت يُقرأ، لا خطأ يُعلَن. */}
+        {suggested && (
+          <p className="mt-3 rounded border border-signal bg-signal-soft px-3 py-2.5 text-sm text-signal">
+            فئة مقترحة من المورد: <bdi className="font-semibold">{suggested}</bdi>
+          </p>
+        )}
 
         {categories.status === 'loading' && (
           <p role="status" className="mt-2 text-sm text-muted">

@@ -11,13 +11,26 @@ const { badRequest, notFound, conflict, forbidden } = require('../utils/errors')
 
 const router = express.Router();
 
+// الرسالتان منسوختان حرفياً في نموذج التسجيل (RegisterPage.jsx)، فلا يرى المورد صيغتين للقاعدة نفسها.
+const SUGGESTED_CATEGORY_LENGTH = 'الفئة المقترحة من 2 إلى 100 محرف.';
+const NO_CATEGORY = 'اختر فئة واحدة على الأقل، أو اكتب فئتك إن لم تجدها.';
+
 const registerSchema = z.object({
   supplier: z.object({
     name: z.string().min(2).max(200),
     cr_number: z.string().regex(/^\d{10}$/, 'السجل التجاري يجب أن يكون 10 أرقام.'),
     vat_number: z.string().max(20).optional(),
     city: z.string().max(80).optional(),
-    category_slugs: z.array(z.string()).min(1, 'اختر فئة واحدة على الأقل.')
+    // بلا حدّ أدنى هنا: الشرط «فئة أو اقتراح» يُفحص بعد التحقق، لأنه يجمع حقلين.
+    category_slugs: z.array(z.string()).default([]),
+    // اقتراح لا فئة: يُخزَّن نصاً في suppliers ولا يُنشأ منه صف في categories ولا في supplier_categories.
+    // التشذيب قبل الحدّ، فما كان مسافات فقط يصير فارغاً ويُرفض.
+    suggested_category: z
+      .string()
+      .trim()
+      .min(2, SUGGESTED_CATEGORY_LENGTH)
+      .max(100, SUGGESTED_CATEGORY_LENGTH)
+      .optional()
   }),
   admin: z.object({
     full_name: z.string().min(2).max(160),
@@ -37,6 +50,9 @@ router.post('/register', async (req, res, next) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) throw badRequest('بيانات تسجيل المورد غير مكتملة.', parsed.error.flatten());
     const { supplier, admin } = parsed.data;
+    const suggestedCategory = supplier.suggested_category || null;
+    // المورد الذي لا يجد فئته يكتبها، فلا يُغلق التسجيل في وجهه. ويجوز الجمع بين الاثنين.
+    if (supplier.category_slugs.length === 0 && !suggestedCategory) throw badRequest(NO_CATEGORY);
 
     const email = admin.email.toLowerCase().trim();
     if (await db('users').where({ email }).first()) throw conflict('البريد الإلكتروني مسجّل مسبقاً.');
@@ -51,13 +67,18 @@ router.post('/register', async (req, res, next) => {
           cr_number: supplier.cr_number,
           vat_number: supplier.vat_number || null,
           city: supplier.city || null,
+          suggested_category: suggestedCategory,
           verification_status: 'pending'
         })
         .returning('*');
 
-      await trx('supplier_categories').insert(
-        categories.map((c) => ({ supplier_id: createdSupplier.id, category_id: c.id, approved: false }))
-      );
+      // الربط بالفئات المختارة من القائمة وحدها — والاقتراح لا يُربط به شيء.
+      // ومورد لم يختر إلا «أخرى» لا صف له هنا حتى يقرّر مسؤول المنصة.
+      if (categories.length) {
+        await trx('supplier_categories').insert(
+          categories.map((c) => ({ supplier_id: createdSupplier.id, category_id: c.id, approved: false }))
+        );
+      }
 
       const [createdAdmin] = await trx('users')
         .insert({
@@ -76,7 +97,11 @@ router.post('/register', async (req, res, next) => {
         entityType: 'supplier',
         entityId: createdSupplier.id,
         action: 'supplier.registered',
-        payload: { cr_number: supplier.cr_number, categories: supplier.category_slugs },
+        payload: {
+          cr_number: supplier.cr_number,
+          categories: supplier.category_slugs,
+          suggested_category: suggestedCategory
+        },
         ip: req.ip
       });
 
@@ -194,10 +219,13 @@ router.get('/', async (req, res, next) => {
  * من يوثّق المورد يقرر اعتماد فئاته، والاعتماد لا يتجاوز ما سجّله،
  * فلا يُعرض عليه ما لا أثر لاختياره فيه.
  * ولا تُقيَّد هذه القراءة في سجل تدقيق: لا تخص شركة، فلا سجل نكتب فيه — كقاعدة GET /api/suppliers.
+ *
+ * ومعها suggested_category: ما كتبه المورد حين لم يجد فئته. نص يُقرأ عند قرار التوثيق،
+ * لا فئة تُعتمد — فلا يدخل في categories أعلاه. وهذا المسار للمنصة وحدها، فلا تراه شركة.
  */
 router.get('/:id/categories', requireRole('platform_admin'), async (req, res, next) => {
   try {
-    const supplier = await db('suppliers').select('id').where({ id: req.params.id }).first();
+    const supplier = await db('suppliers').select('id', 'suggested_category').where({ id: req.params.id }).first();
     if (!supplier) throw notFound('المورد غير موجود.');
 
     const categories = await db('supplier_categories')
@@ -206,7 +234,7 @@ router.get('/:id/categories', requireRole('platform_admin'), async (req, res, ne
       .select('categories.id', 'categories.slug', 'categories.name_ar', 'categories.name_en', 'supplier_categories.approved')
       .orderBy('categories.name_ar', 'asc');
 
-    return res.json({ categories });
+    return res.json({ categories, suggested_category: supplier.suggested_category });
   } catch (err) {
     return next(err);
   }
