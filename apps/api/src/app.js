@@ -7,7 +7,13 @@ const env = require('./config/env');
 const db = require('./db/knex');
 const pkg = require('../package.json');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
-const { loginLimiter, accountCreationLimiter, agentKeyLimiter, apiLimiter } = require('./middleware/rateLimit');
+const {
+  loginLimiter,
+  loginEmailLimiter,
+  accountCreationLimiter,
+  agentKeyLimiter,
+  apiLimiter
+} = require('./middleware/rateLimit');
 
 const authRoutes = require('./routes/auth.routes');
 const companiesRoutes = require('./routes/companies.routes');
@@ -51,7 +57,11 @@ function createApp() {
   // إلا ما حمل الرأس X-API-Key فعلاً.
   app.use('/api', agentKeyLimiter);
   // المسارات العامة الثلاثة التي لا تحميها مصادقة تحمل حدّاً أضيق فوق الحد العام.
-  app.post('/api/auth/login', loginLimiter);
+  // الدخول يحمل حدّين معاً: الأول بمصدر الطلب (IP) والثاني بالحساب المُستهدَف (البريد).
+  // الترتيب مقصود — حدّ المصدر أولاً: الطلب الذي يحجبه لا يصل الثاني فلا يستهلك
+  // من رصيد بريد الضحية شيئاً، فلا يُقفل حساب بريء بفيضان من عنوان محجوب أصلاً.
+  // يعملان على `req.body` فوجب أن يبقيا بعد `express.json()` أعلاه.
+  app.post('/api/auth/login', loginLimiter, loginEmailLimiter);
   // نسخة واحدة من accountCreationLimiter على مساري الإنشاء معاً — عدّاد واحد مشترك،
   // فالحد على «إنشاء حساب جديد» من هذا العنوان أياً كان نوعه، ولا يُضاعَف بالتنقل بين المسارين.
   app.post('/api/auth/register-company', accountCreationLimiter);

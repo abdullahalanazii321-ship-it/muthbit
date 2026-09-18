@@ -7,6 +7,7 @@ const env = require('../config/env');
  *
  * المفتاح هو عنوان IP (السلوك الافتراضي للحزمة)، ويُقرأ بعد `app.set('trust proxy', 1)`
  * الموجود أصلاً في app.js — بدونه تبدو كل طلبات Render قادمة من عنوان واحد.
+ * يشذّ عن ذلك `loginEmailLimiter` وحده: مفتاحه البريد المُستهدَف لا مصدر الطلب.
  *
  * العدّ في ذاكرة العملية لا في قاعدة بيانات ولا Redis: يكفي خادماً واحداً،
  * ويُصفَّر عند كل إعادة تشغيل، ولا يُشارَك بين نسخ متعددة إن تعدّدت لاحقاً.
@@ -46,6 +47,7 @@ function buildHandler(windowMs, messageAr) {
 /**
  * appliesTo: يقصر المحدد على طلبات بعينها؛ ما عداها لا يُعدّ أصلاً.
  * requestWasSuccessful: يعرّف «المحاولة الناجحة» التي تُستردّ مع skipSuccessfulRequests.
+ * keyGenerator: يبدّل مفتاح العدّ؛ إن غاب فالمفتاح عنوان IP كما تفعل الحزمة افتراضاً.
  */
 function createLimiter({
   windowMs,
@@ -53,7 +55,8 @@ function createLimiter({
   messageAr,
   skipSuccessfulRequests = false,
   appliesTo = null,
-  requestWasSuccessful = null
+  requestWasSuccessful = null,
+  keyGenerator = null
 }) {
   return rateLimit({
     windowMs,
@@ -63,6 +66,7 @@ function createLimiter({
     skipSuccessfulRequests,
     skip: (req, res) => skipInTestEnv() || (appliesTo ? !appliesTo(req, res) : false),
     ...(requestWasSuccessful ? { requestWasSuccessful } : {}),
+    ...(keyGenerator ? { keyGenerator } : {}),
     handler: buildHandler(windowMs, messageAr)
   });
 }
@@ -70,15 +74,67 @@ function createLimiter({
 const GENERIC_MESSAGE = 'محاولات كثيرة خلال وقت قصير. انتظر قليلاً ثم أعد المحاولة.';
 
 /**
- * الدخول: ١٠ محاولات في ١٥ دقيقة.
+ * رسالة الحجب على مسار الدخول — واحدة لا اثنتان.
+ *
+ * المحدّدان (بالـ IP وبالبريد) يشتركان في هذا الثابت عمداً: لو اختلفت الرسالتان
+ * لصار الفرق بينهما كاشفاً — يجرّب المهاجم خمس محاولات على بريد، فإن جاءته الرسالة
+ * الخاصة بحدّ البريد عرف أنه أصاب شيئاً. نكون قد أغلقنا باباً وفتحنا نافذة.
+ * لا تفصل هذا الثابت إلى نصّين مهما بدا التمييز مفيداً في السجلّات.
+ */
+const LOGIN_RATE_MESSAGE = 'محاولات دخول كثيرة. انتظر ١٥ دقيقة ثم أعد المحاولة.';
+
+/**
+ * الدخول — حدّ المصدر: ١٠ محاولات في ١٥ دقيقة لكل عنوان IP.
+ * يوقف الهجوم الواسع من مصدر واحد على حسابات كثيرة.
  * skipSuccessfulRequests يعاقب المحاولات الفاشلة وحدها — من يدخل ويخرج مراراً لا يُحبس،
  * ومن يجرّب كلمات المرور يُوقَف.
  */
 const loginLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  messageAr: 'محاولات دخول كثيرة. انتظر ١٥ دقيقة ثم أعد المحاولة.',
+  messageAr: LOGIN_RATE_MESSAGE,
   skipSuccessfulRequests: true
+});
+
+/**
+ * مفتاح ثابت لطلبات الدخول المشوّهة — بلا بريد أو ببريد غير نصي.
+ * تذهب كلها إلى دلو واحد: هي طلبات لا تصلح أصلاً ولا يضير حصرها معاً،
+ * والمهم ألا يرمي مولّد المفتاح استثناءً فيسقط المسار كله.
+ */
+const MALFORMED_LOGIN_KEY = '__no_email__';
+
+function loginEmailKey(req) {
+  const email = req && req.body ? req.body.email : null;
+  if (typeof email !== 'string') return MALFORMED_LOGIN_KEY;
+  return email.trim().toLowerCase() || MALFORMED_LOGIN_KEY;
+}
+
+/**
+ * الدخول — حدّ الحساب: ٥ محاولات فاشلة في ١٥ دقيقة لكل بريد إلكتروني.
+ *
+ * يعمل **مع** حدّ الـ IP فوقه لا بدلاً منه. ذاك يوقف الهجوم الواسع من مصدر واحد،
+ * وهذا يوقف الهجوم الموزّع على حساب واحد: مهاجم بمئة عنوان يجرّب ألف كلمة مرور
+ * على حساب مالك شركة بعينه لا يلمس حدّ الـ IP أبداً، لأن العدّاد هناك يتبع مصدر
+ * الهجوم لا هدفه. المفتاح هنا هو الهدف.
+ *
+ * البريد يُشذَّب ويُحوَّل إلى حروف صغيرة قبل العدّ، وإلا أفلت المهاجم بتغيير حالة الأحرف
+ * فحصل على خمس محاولات جديدة مع كل صيغة. هذا هو التطبيع نفسه الذي يفعله مسار الدخول
+ * قبل البحث في `users`، فالمفتاح والحساب شيء واحد.
+ *
+ * IPv6: مولّد المفتاح هذا لا يقرأ `req.ip` إطلاقاً، فلا محل لمسألة تجزئة عناوين IPv6
+ * التي تفرضها express-rate-limit (ومعها المساعد `ipKeyGenerator`) على المولّدات
+ * المبنية على العنوان — فحص `keyGeneratorIpFallback` في النسخة ٨ لا يُثار هنا.
+ *
+ * المخزن في ذاكرة العملية كبقية المحددات: يكفي ما دام الخادم نسخة واحدة على Render.
+ * يوم تتعدّد النسخ يصير هذا غير كافٍ — لكل نسخة عدّادها، فيصير الحد الفعلي
+ * خمساً مضروبة في عدد النسخ، ويجب حينها نقل المخزن إلى Redis مشترك.
+ */
+const loginEmailLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  messageAr: LOGIN_RATE_MESSAGE,
+  skipSuccessfulRequests: true,
+  keyGenerator: loginEmailKey
 });
 
 /**
@@ -125,6 +181,7 @@ const apiLimiter = createLimiter({
 
 module.exports = {
   loginLimiter,
+  loginEmailLimiter,
   accountCreationLimiter,
   agentKeyLimiter,
   apiLimiter,

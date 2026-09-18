@@ -719,6 +719,131 @@ async function run() {
       sessionAfterBlock.status === 200,
       { status: sessionAfterBlock.status }
     );
+
+    // ── الحد بالبريد: العدّاد يتبع الحساب المُستهدَف لا مصدر الهجوم ──
+    //
+    // كل محاولة هنا تأتي من عنوان مختلف عبر X-Forwarded-For (وapp.set('trust proxy', 1)
+    // يجعله هو req.ip): لو كان العدّ بالـ IP وحده لما حُجب شيء أبداً، وهذا هو بيت القصيد.
+    // عناوين النطاق 203.0.113.x محجوزة للتوثيق، ولا تصادف عنواناً حقيقياً.
+    const TARGET_EMAIL = 'admin@buyer2-demo.sa';
+    const emailAttempts = [];
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      emailAttempts.push(
+        await request(app)
+          .post('/api/auth/login')
+          .set('X-Forwarded-For', `203.0.113.${attempt}`)
+          .send({ email: TARGET_EMAIL, password: 'wrong-password' })
+      );
+    }
+    const sixthByEmail = emailAttempts[5];
+    check(
+      'ست محاولات فاشلة على بريد واحد من ستة عناوين مختلفة: الحجب عند السادسة',
+      emailAttempts.slice(0, 5).every((r) => r.status === 401) &&
+        sixthByEmail.status === 429 &&
+        sixthByEmail.body.error &&
+        sixthByEmail.body.error.code === 'rate_limited',
+      { statuses: emailAttempts.map((r) => r.status) }
+    );
+
+    // أخطر تفصيلة: لو اختلف ردّ الحجب بالبريد عن ردّ الحجب بالـ IP لصار الفرق كاشفاً.
+    // lastAttempt أعلاه هو حجب بالـ IP — يُقارَن به حرفياً لا بنص مكتوب هنا،
+    // فلو انفصلت الرسالتان يوماً سقط هذا الفحص فوراً.
+    check(
+      'ردّ الحجب بالبريد مطابق حرفياً لردّ الحجب بالـ IP — لا كاشف لوجود الحساب',
+      sixthByEmail.status === lastAttempt.status &&
+        sixthByEmail.body.error.code === lastAttempt.body.error.code &&
+        sixthByEmail.body.error.message === lastAttempt.body.error.message &&
+        JSON.stringify(Object.keys(sixthByEmail.body.error)) ===
+          JSON.stringify(Object.keys(lastAttempt.body.error)),
+      { byEmail: sixthByEmail.body.error, byIp: lastAttempt.body.error }
+    );
+
+    // العنوان 203.0.113.6 هو نفسه الذي جاءت منه المحاولة المحجوبة للتوّ:
+    // بريد آخر منه يدخل بلا عائق، أي أن المحجوب هو الحساب لا المصدر.
+    const otherEmailSameIp = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.6')
+      .send({ email: 'admin@supplier-demo.sa', password: PASSWORD });
+    check(
+      'بريد آخر من العنوان نفسه ما زال يدخل — الحظر تبع الحساب لا المصدر',
+      otherEmailSameIp.status === 200,
+      { status: otherEmailSameIp.status }
+    );
+
+    // الدخول الناجح لا يُحتسب: أربع محاولات فاشلة ثم دخول ناجح ثم فاشلة خامسة.
+    // لو احتُسب الناجح لصارت الأخيرة سادسة ولحُجبت — مرورها هو البرهان.
+    const COUNTER_IP = '203.0.113.20';
+    const beforeSuccess = [];
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      beforeSuccess.push(
+        await request(app)
+          .post('/api/auth/login')
+          .set('X-Forwarded-For', COUNTER_IP)
+          .send({ email: 'admin@finance-demo.sa', password: 'wrong-password' })
+      );
+    }
+    const successfulLogin = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', COUNTER_IP)
+      .send({ email: 'admin@finance-demo.sa', password: PASSWORD });
+    const fifthFailure = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', COUNTER_IP)
+      .send({ email: 'admin@finance-demo.sa', password: 'wrong-password' });
+    check(
+      'الدخول الناجح لا يزيد عدّاد البريد — الخامسة الفاشلة بعده ما زالت تمر',
+      beforeSuccess.every((r) => r.status === 401) &&
+        successfulLogin.status === 200 &&
+        fifthFailure.status === 401,
+      {
+        before: beforeSuccess.map((r) => r.status),
+        success: successfulLogin.status,
+        fifth: fifthFailure.status
+      }
+    );
+
+    // حالة الأحرف لا تفتح عدّاداً جديداً: خمس محاولات بصيغة كبيرة تحجب الصيغة الصغيرة،
+    // والمحاولة السادسة هنا بكلمة مرور صحيحة — تُحجب رغم صحتها لأن العدّاد واحد.
+    const CASE_IP = '203.0.113.30';
+    const upperAttempts = [];
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      upperAttempts.push(
+        await request(app)
+          .post('/api/auth/login')
+          .set('X-Forwarded-For', CASE_IP)
+          .send({ email: 'ADMIN@OWNER2-DEMO.SA', password: 'wrong-password' })
+      );
+    }
+    const lowerAfterUpper = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', CASE_IP)
+      .send({ email: 'admin@owner2-demo.sa', password: PASSWORD });
+    check(
+      'البريد بحروف كبيرة يشترك في العدّاد نفسه مع نظيره بحروف صغيرة',
+      upperAttempts.every((r) => r.status === 401) &&
+        lowerAfterUpper.status === 429 &&
+        lowerAfterUpper.body.error.code === 'rate_limited',
+      { upper: upperAttempts.map((r) => r.status), lower: lowerAfterUpper.status }
+    );
+
+    // طلب مشوّه لا يكسر مولّد المفتاح: بلا بريد، وببريد غير نصي.
+    // الرد ٤٠٠ من مسار الدخول نفسه — لا ٥٠٠ ولا استثناء يسقط الوسيط.
+    const noEmail = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.40')
+      .send({ password: PASSWORD });
+    const nonStringEmail = await request(app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.41')
+      .send({ email: { junk: true }, password: PASSWORD });
+    check(
+      'طلب دخول بلا بريد أو ببريد غير نصي يرد 400 ولا يكسر مولّد المفتاح',
+      noEmail.status === 400 && nonStringEmail.status === 400,
+      { noEmail: noEmail.status, nonString: nonStringEmail.status }
+    );
   } finally {
     setLimitsEnabledForTests(false);
   }
