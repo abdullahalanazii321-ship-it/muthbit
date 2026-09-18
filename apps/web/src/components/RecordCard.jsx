@@ -22,10 +22,13 @@ export function RecordCards({ label, busy = false, children }) {
 /**
  * بطاقة واحدة. title العنوان الأبرز، badge وسم يقع بجانبه (الحالة مثلاً)،
  * children أزواج RecordField، actions أزرار أسفل البطاقة.
+ *
+ * className يُضاف إلى البطاقة نفسها — لبطاقة يفتحها الضغط عليها كلها:
+ * `relative` هنا، ورابط العنوان يمدّ `after:inset-0` فوقها.
  */
-export function RecordCard({ title, badge, actions, children }) {
+export function RecordCard({ title, badge, actions, className = '', children }) {
   return (
-    <li className="rounded border border-line bg-surface p-4">
+    <li className={`rounded border border-line bg-surface p-4 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="min-w-0 break-words font-display text-base font-semibold text-ink">{title}</h3>
         {badge}
