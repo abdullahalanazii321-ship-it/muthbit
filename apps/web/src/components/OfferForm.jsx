@@ -121,11 +121,19 @@ export default function OfferForm({ requestId, onSubmitted, onCancel }) {
 
       {error && <Alert>{error}</Alert>}
 
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={!priceValid} loading={submitting} loadingText="جارٍ الإرسال…">
+      {/* الإرسال والإلغاء متجاوران على الحاسب، ومكدّسان بعرض الشاشة على الجوال:
+          المورد يضغط واقفاً، و«إلغاء» بجوار «إرسال» بعرض إصبع خسارةٌ لعرض كُتب كاملاً. */}
+      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:gap-3">
+        <Button
+          type="submit"
+          className="w-full md:w-auto"
+          disabled={!priceValid}
+          loading={submitting}
+          loadingText="جارٍ الإرسال…"
+        >
           إرسال العرض
         </Button>
-        <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+        <Button variant="secondary" className="w-full md:w-auto" onClick={onCancel} disabled={submitting}>
           إلغاء
         </Button>
       </div>

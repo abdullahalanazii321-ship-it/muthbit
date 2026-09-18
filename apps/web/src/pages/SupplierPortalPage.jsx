@@ -10,6 +10,14 @@ import Detail from '../components/Detail.jsx';
 import OfferForm, { INCOMPLETE_OFFER_HINT } from '../components/OfferForm.jsx';
 import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import { RecordCard, RecordCards, RecordField } from '../components/RecordCard.jsx';
+
+/**
+ * المورد يقدّم من جواله وهو واقف في مستودع، فكل زر قرار بعرض الشاشة تحت ٧٦٨ بكسل،
+ * وفوقها يعود صفاً بعرض محتواه كما هو اليوم حرفياً.
+ */
+const STACKED_ROW = 'flex flex-col gap-4 md:flex-row md:flex-wrap md:gap-2';
+const FULL_ON_MOBILE = 'w-full md:w-auto';
 
 const OPEN_TAB = 'open';
 const OFFERS_TAB = 'offers';
@@ -85,7 +93,9 @@ export default function SupplierPortalPage() {
   return (
     <div className="min-h-screen bg-ground">
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      {/* break-words موروثة، فسطر واحد يكسر كل نص طويل في الشاشة: الصنف، والمواصفات،
+          ورسائل الخادم، ورقم المرجع. خلايا الجدول عليها whitespace-nowrap فلا تتأثر. */}
+      <main className="mx-auto max-w-5xl break-words px-4 py-8">
         <h1 className="font-display text-2xl font-semibold text-ink">بوابة المورد</h1>
 
         <Tabs active={activeTab} onChange={changeTab} />
@@ -233,7 +243,9 @@ function OpenRequestCard({ request, notice, onDismissNotice, onSubmitted, onWith
             <OfferForm requestId={request.id} onSubmitted={handleSubmitted} onCancel={() => setFormOpen(false)} />
           ) : (
             <div>
-              <Button onClick={() => setFormOpen(true)}>{hasOffer ? 'تقديم عرض جديد' : 'قدّم عرضاً'}</Button>
+              <Button className={FULL_ON_MOBILE} onClick={() => setFormOpen(true)}>
+                {hasOffer ? 'تقديم عرض جديد' : 'قدّم عرضاً'}
+              </Button>
             </div>
           ))}
       </div>
@@ -248,7 +260,7 @@ function OpenRequestCard({ request, notice, onDismissNotice, onSubmitted, onWith
 function MyOfferBar({ request, onWithdrawResult }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-surface-2 px-4 py-3">
-      <p className="text-ink">
+      <p className="min-w-0 text-ink">
         عرضك: <span className="tabular-nums">{formatSAR(request.my_offer_price)}</span> —{' '}
         {offerStatusLabel(request.my_offer_status)}
       </p>
@@ -294,7 +306,7 @@ function MyOffersPanel({ list, notice, onDismissNotice, onWithdrawResult }) {
 }
 
 function MyOffersContent({ list, onWithdrawResult }) {
-  if (list.status === 'loading') return <OffersTable loading />;
+  if (list.status === 'loading') return <OffersList loading />;
   if (list.status === 'error') return <ListError error={list.error} onRetry={list.reload} />;
 
   const { offers } = list.data;
@@ -303,9 +315,91 @@ function MyOffersContent({ list, onWithdrawResult }) {
   return (
     <>
       {list.refreshing && <RefreshingNote />}
-      <OffersTable offers={offers} onWithdrawResult={onWithdrawResult} />
+      <OffersList offers={offers} onWithdrawResult={onWithdrawResult} />
       {offers.some(isIncomplete) && <p className="text-sm text-signal">{INCOMPLETE_OFFER_HINT}</p>}
     </>
+  );
+}
+
+/**
+ * عروضي بشكلين لعرض واحد من البيانات: بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
+ */
+function OffersList(props) {
+  return (
+    <>
+      <div className="md:hidden">
+        <OffersCards {...props} />
+      </div>
+      <div className="hidden md:block">
+        <OffersTable {...props} />
+      </div>
+    </>
+  );
+}
+
+/** بطاقات العرض الضيق: بطاقة لكل عرض، فيها كل أعمدة الجدول العشرة بلا نقصان. */
+function OffersCards({ loading = false, offers = [], onWithdrawResult }) {
+  if (loading) {
+    return (
+      <RecordCards label="جارٍ التحميل…" busy>
+        {Array.from({ length: SKELETON_CARDS }, (_, card) => (
+          <li key={card} className="rounded border border-line bg-surface p-4">
+            <div className="h-5 w-36 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
+            <div className="mt-3 flex flex-col gap-2">
+              {Array.from({ length: 5 }, (_, line) => (
+                <div key={line} className="h-4 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
+              ))}
+            </div>
+          </li>
+        ))}
+      </RecordCards>
+    );
+  }
+
+  return (
+    <RecordCards label="عروضي">
+      {offers.map((offer) => (
+        <RecordCard
+          key={offer.id}
+          title={
+            <bdi className="font-mono">{offer.reference}</bdi>
+          }
+          badge={<StatusBadge status={offer.request_status} />}
+          actions={
+            offer.status === WITHDRAWABLE_STATUS ? (
+              <WithdrawButton
+                offerId={offer.id}
+                label="سحب"
+                onResult={(result) => onWithdrawResult(offer, result)}
+              />
+            ) : null
+          }
+        >
+          <RecordField label="الصنف">{offer.item}</RecordField>
+          <RecordField label="الكمية">
+            <span className="tabular-nums">{offer.quantity}</span>
+          </RecordField>
+          <RecordField label="السعر">
+            <span className="tabular-nums">{formatSAR(offer.price)}</span>
+          </RecordField>
+          <RecordField label="الضمان">
+            <span className="tabular-nums">
+              <TermValue value={offer.warranty_months} format={formatMonths} />
+            </span>
+          </RecordField>
+          <RecordField label="مدة التسليم">
+            <span className="tabular-nums">
+              <TermValue value={offer.lead_days} format={formatDays} />
+            </span>
+          </RecordField>
+          <RecordField label="حالة العرض">{offerStatusLabel(offer.status)}</RecordField>
+          <RecordField label="التاريخ">
+            <span className="tabular-nums">{formatDate(offer.updated_at ?? offer.created_at)}</span>
+          </RecordField>
+        </RecordCard>
+      ))}
+    </RecordCards>
   );
 }
 
@@ -373,19 +467,26 @@ function OffersTable({ loading = false, offers = [], onWithdrawResult }) {
   );
 }
 
-/** الضمان أو مدة التسليم. الصفر «—» على خلفية signal الخفيفة: العرض ناقص لا يصل المشتري. */
+/**
+ * قيمة الضمان أو مدة التسليم. الصفر «—» ومعه «ناقص» لقارئ الشاشة: العرض لا يصل المشتري.
+ * يقرأها الجدول والبطاقات معاً فلا يفترقان في معنى الصفر.
+ */
+function TermValue({ value, format }) {
+  if (!isZeroTerm(value)) return <>{format(value)}</>;
+  return (
+    <span className="text-signal">
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">ناقص</span>
+    </span>
+  );
+}
+
+/** الخلية نفسها في الجدول: الصفر يصبغ الخلية كلها بخلفية signal الخفيفة. */
 function TermCell({ value, format }) {
   const missing = isZeroTerm(value);
   return (
     <td className={`whitespace-nowrap px-4 py-3 tabular-nums ${missing ? 'bg-signal-soft text-signal' : ''}`}>
-      {missing ? (
-        <>
-          <span aria-hidden="true">—</span>
-          <span className="sr-only">ناقص</span>
-        </>
-      ) : (
-        format(value)
-      )}
+      <TermValue value={value} format={format} />
     </td>
   );
 }
@@ -420,14 +521,15 @@ function WithdrawButton({ offerId, label, onResult }) {
 
   if (step === 'idle') {
     return (
-      <Button variant="secondary" onClick={() => setStep('confirm')}>
+      <Button variant="secondary" className={FULL_ON_MOBILE} onClick={() => setStep('confirm')}>
         {label}
       </Button>
     );
   }
 
   return (
-    <div className="flex w-64 flex-col gap-4 text-start">
+    // w-64 كان عرضاً ثابتاً يزاحم شاشة ٣٦٠ بكسل: بعرض الحاوية على الجوال، وعند ٧٦٨ يعود ٢٥٦ كما كان.
+    <div className="flex w-full flex-col gap-4 text-start md:w-64">
       <ReasonField
         id={reasonId}
         label="سبب سحب العرض"
@@ -436,8 +538,9 @@ function WithdrawButton({ offerId, label, onResult }) {
         disabled={step === 'sending'}
         note="تقرأ الشركة المشترية هذا السبب."
       />
-      <div className="flex flex-wrap gap-2">
+      <div className={STACKED_ROW}>
         <Button
+          className={FULL_ON_MOBILE}
           onClick={withdraw}
           disabled={!reasonReady(reason)}
           loading={step === 'sending'}
@@ -445,7 +548,12 @@ function WithdrawButton({ offerId, label, onResult }) {
         >
           تأكيد السحب
         </Button>
-        <Button variant="secondary" onClick={() => setStep('idle')} disabled={step === 'sending'}>
+        <Button
+          variant="secondary"
+          className={FULL_ON_MOBILE}
+          onClick={() => setStep('idle')}
+          disabled={step === 'sending'}
+        >
           تراجع
         </Button>
       </div>
