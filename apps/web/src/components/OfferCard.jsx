@@ -20,7 +20,8 @@ export default function OfferCard({ offer, cheapest = false, onSelect, selecting
   return (
     <article className={`rounded border bg-surface p-5 sm:p-6 ${selected ? 'border-seal ring-1 ring-seal' : 'border-line'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        {/* min-w-0: بدونها يرفض العمود الانكماش تحت أطول كلمة في اسم المورد، فيدفع البطاقة خارج الشاشة. */}
+        <div className="min-w-0">
           <h3 className="font-semibold text-ink">{offer.supplier_name}</h3>
           {hasRating && (
             <p className="text-sm text-muted">
@@ -62,7 +63,14 @@ export default function OfferCard({ offer, cheapest = false, onSelect, selecting
 
       {onSelect && (
         <div className="mt-4">
-          <Button onClick={onSelect} disabled={disabled} loading={selecting} loadingText="جارٍ الاختيار…">
+          {/* بعرض البطاقة كاملة على الجوال — هدف إصبع لا زر صغير وسط نص. وفوق ٧٦٨ بكسل بعرض محتواه كما كان. */}
+          <Button
+            className="w-full md:w-auto"
+            onClick={onSelect}
+            disabled={disabled}
+            loading={selecting}
+            loadingText="جارٍ الاختيار…"
+          >
             اختر هذا العرض
           </Button>
         </div>

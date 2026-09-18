@@ -98,7 +98,11 @@ function RequestDetail({ id }) {
   return (
     <div className="min-h-screen bg-ground">
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      {/* break-words موروثة، فسطر واحد هنا يكسر كل نص طويل في الشاشة: الصنف، واسم المورد،
+          وأسباب السياسة، ورقم أمر الشراء. قِيس قبلها: صنف بكلمة واحدة بلا مسافة (رقم موديل)
+          كان يدفع الصفحة ٢٢٤ بكسل خارج الشاشة، واسم المورد ٤٥، وسبب السياسة ٢٢.
+          وُضعت هنا لا في Alert ولا في Detail لأنهما مشتركان مع شاشات أخرى خارج هذه المهمة. */}
+      <main className="mx-auto max-w-5xl break-words px-4 py-8">
         {detail.status === 'loading' && <DetailSkeleton />}
         {detail.status === 'error' && <DetailError error={detail.error} onRetry={detail.reload} />}
         {detail.status === 'ready' && (
@@ -124,10 +128,11 @@ function RequestView({ data, refreshing, notice, action, busy, handlers }) {
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        {/* min-w-0: يسمح للعمود بالانكماش تحت مقاس محتواه، فينكسر الصنف الطويل بدل أن يدفع الشارة خارج الشاشة. */}
+        <div className="min-w-0">
           <bdi className="font-mono text-sm text-muted">{request.reference}</bdi>
           <div className="mt-1 flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-2xl font-semibold text-ink">{request.item}</h1>
+            <h1 className="min-w-0 font-display text-2xl font-semibold text-ink">{request.item}</h1>
             <StatusBadge status={request.status} />
           </div>
         </div>
@@ -259,6 +264,13 @@ function OffersSection({ request, offers, withheld, action, busy, onSelect }) {
 
 // ---------- ٤. الاعتماد ----------
 
+/**
+ * أزرار القرار على الجوال: مكدّسة بعرض كامل وبينها ١٦ بكسل — «اعتماد» و«رفض» متضادّان،
+ * وضغط أحدهما بدل الآخر بإصبع لا رجعة فيه. وفوق ٧٦٨ بكسل تعود صفاً كما هي اليوم حرفياً.
+ */
+const DECISION_ROW = 'flex flex-col gap-4 md:flex-row md:flex-wrap md:gap-3';
+const DECISION_BUTTON = 'w-full md:w-auto';
+
 /** الأزرار تظهر لكل من يفتح الصفحة: الخادم يرد 403 برسالة واضحة، وهي أصدق من إخفاء صامت. */
 function DecisionSection({ action, busy, onApprove, onReject }) {
   const [rejecting, setRejecting] = useState(false);
@@ -287,27 +299,39 @@ function DecisionSection({ action, busy, onApprove, onReject }) {
             disabled={sendingReject}
             note="ويظهر لصاحب الطلب في تفاصيل الطلب."
           />
-          <div className="flex flex-wrap gap-3">
+          <div className={DECISION_ROW}>
             <Button
               type="submit"
               variant="signal"
+              className={DECISION_BUTTON}
               disabled={!ready || busy}
               loading={sendingReject}
               loadingText="جارٍ الرفض…"
             >
               تأكيد الرفض
             </Button>
-            <Button variant="secondary" onClick={() => setRejecting(false)} disabled={sendingReject}>
+            <Button
+              variant="secondary"
+              className={DECISION_BUTTON}
+              onClick={() => setRejecting(false)}
+              disabled={sendingReject}
+            >
               تراجع
             </Button>
           </div>
         </form>
       ) : (
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button onClick={onApprove} disabled={busy} loading={approving} loadingText="جارٍ الاعتماد…">
+        <div className={`mt-4 ${DECISION_ROW}`}>
+          <Button
+            className={DECISION_BUTTON}
+            onClick={onApprove}
+            disabled={busy}
+            loading={approving}
+            loadingText="جارٍ الاعتماد…"
+          >
             اعتماد
           </Button>
-          <Button variant="signal" onClick={() => setRejecting(true)} disabled={busy}>
+          <Button variant="signal" className={DECISION_BUTTON} onClick={() => setRejecting(true)} disabled={busy}>
             رفض
           </Button>
         </div>
