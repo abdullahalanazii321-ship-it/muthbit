@@ -10,6 +10,8 @@ import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
 import LimitsForm from '../components/LimitsForm.jsx';
 import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
+import { Badge } from '../components/StatusBadge.jsx';
+import { RecordCard, RecordCards, RecordField } from '../components/RecordCard.jsx';
 
 const COLUMNS = ['الاسم', 'البريد', 'الدور', 'الحالة', 'السقف'];
 const ACTIONS_COLUMN = 'إجراءات';
@@ -180,7 +182,7 @@ export default function TeamPage() {
         )}
 
         <div className="mt-6">
-          {users.status === 'loading' && <UsersTable loading canManage={canManage} />}
+          {users.status === 'loading' && <UsersList loading canManage={canManage} />}
 
           {users.status === 'error' && (
             <div className="flex flex-col items-start gap-4">
@@ -204,7 +206,7 @@ export default function TeamPage() {
                   جارٍ التحديث…
                 </p>
               )}
-              <UsersTable
+              <UsersList
                 users={userList}
                 me={me}
                 canManage={canManage}
@@ -245,6 +247,155 @@ function PanelCard({ title, children }) {
       </h2>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * قائمة المستخدمين بشكلين لعرض واحد من البيانات:
+ * بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا يدفع الصفحة أفقياً.
+ */
+function UsersList(props) {
+  return (
+    <>
+      <div className="md:hidden">
+        <UsersCards {...props} />
+      </div>
+      <div className="hidden md:block">
+        <UsersTable {...props} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * من يجوز إيقافه ومن يجوز إعادة تفعيله — قاعدة واحدة يقرؤها الجدول والبطاقات معاً،
+ * فلا يفترقان يوماً في إجراء يظهر هنا ويغيب هناك.
+ * الإيقاف لا يظهر لحسابك نفسه ولا لموقوف أصلاً، ولا على صف المالك لغير مالك
+ * (الخادم يرفضه دائماً) — يُحذف ولا يُعطَّل.
+ * وإعادة التفعيل للموقوف وحده، وبقيد المالك نفسه.
+ */
+function actionFlags(user, me) {
+  const ownerGuard = user.role !== OWNER_ROLE || me.role === OWNER_ROLE;
+  return {
+    canSuspend: user.id !== me.id && user.status !== SUSPENDED && ownerGuard,
+    canActivate: user.status === SUSPENDED && ownerGuard
+  };
+}
+
+/** أزرار صف واحد. stacked يكدّسها بعرض كامل للبطاقة؛ وبدونه تبقى في صف كما في الجدول. */
+function UserActions({
+  user,
+  me,
+  entry,
+  busy,
+  onSetLimits,
+  onSuspend,
+  onActivate,
+  activatingId,
+  stacked = false
+}) {
+  const limitsKnown = entry?.status === 'set' || entry?.status === 'none';
+  const { canSuspend, canActivate } = actionFlags(user, me);
+  const width = stacked ? 'w-full' : '';
+
+  return (
+    <div className={stacked ? 'flex flex-col gap-2' : 'flex gap-2'}>
+      {/* لا يظهر قبل وصول السقف الحالي: النموذج الفارغ يستبدل سقفاً قائماً بلا علم أحد. */}
+      {limitsKnown && (
+        <Button variant="secondary" className={width} onClick={() => onSetLimits(user, entry)} disabled={busy}>
+          ضبط السقف
+        </Button>
+      )}
+      {canSuspend && (
+        <Button variant="secondary" className={width} onClick={() => onSuspend(user)} disabled={busy}>
+          إيقاف
+        </Button>
+      )}
+      {canActivate && (
+        <Button
+          className={width}
+          onClick={() => onActivate(user)}
+          disabled={busy || (activatingId !== null && activatingId !== user.id)}
+          loading={activatingId === user.id}
+          loadingText="جارٍ التفعيل…"
+        >
+          إعادة تفعيل
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** حالة المستخدم وسماً. اللون هو نفسه الذي يستعمله الجدول: الموقوف بلون الإشارة وما عداه محايد. */
+function UserStatusBadge({ status }) {
+  return <Badge tone={status === SUSPENDED ? 'signal' : 'muted'}>{userStatusLabel(status)}</Badge>;
+}
+
+/** بطاقات العرض الضيق: بطاقة لكل مستخدم، فيها كل ما في صف الجدول بلا نقصان. */
+function UsersCards({
+  loading = false,
+  users = [],
+  me,
+  canManage,
+  busy = false,
+  limits = {},
+  onRetryLimit,
+  onSetLimits,
+  onSuspend,
+  onActivate,
+  activatingId = null
+}) {
+  if (loading) {
+    return (
+      <RecordCards label="جارٍ التحميل…" busy>
+        {Array.from({ length: SKELETON_ROWS }, (_, row) => (
+          <li key={row} className="rounded border border-line bg-surface p-4">
+            <div className="h-5 w-40 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
+            <div className="mt-3 flex flex-col gap-2">
+              {Array.from({ length: COLUMNS.length - 1 }, (_, line) => (
+                <div key={line} className="h-4 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
+              ))}
+            </div>
+          </li>
+        ))}
+      </RecordCards>
+    );
+  }
+
+  return (
+    <RecordCards label="المستخدمون">
+      {users.map((user) => (
+        <RecordCard
+          key={user.id}
+          title={user.full_name}
+          badge={<UserStatusBadge status={user.status} />}
+          actions={
+            canManage ? (
+              <UserActions
+                stacked
+                user={user}
+                me={me}
+                entry={limits[user.id]}
+                busy={busy}
+                onSetLimits={onSetLimits}
+                onSuspend={onSuspend}
+                onActivate={onActivate}
+                activatingId={activatingId}
+              />
+            ) : null
+          }
+        >
+          <RecordField label="البريد">
+            <bdi>{user.email}</bdi>
+          </RecordField>
+          <RecordField label="الدور">{roleLabel(user.role)}</RecordField>
+          <RecordField label="السقف">
+            <LimitCell entry={limits[user.id]} onRetry={() => onRetryLimit(user.id)} />
+          </RecordField>
+        </RecordCard>
+      ))}
+    </RecordCards>
   );
 }
 
@@ -292,13 +443,6 @@ function UsersTable({
               ))
             : users.map((user) => {
                 const entry = limits[user.id];
-                const limitsKnown = entry?.status === 'set' || entry?.status === 'none';
-                // الإيقاف لا يظهر لحسابك نفسه ولا لموقوف أصلاً، ولا على صف المالك لغير مالك
-                // (الخادم يرفضه دائماً) — يُحذف ولا يُعطَّل.
-                const ownerGuard = user.role !== OWNER_ROLE || me.role === OWNER_ROLE;
-                const canSuspend = user.id !== me.id && user.status !== SUSPENDED && ownerGuard;
-                // إعادة التفعيل للموقوف وحده، وبقيد المالك نفسه — الخادم يردّ 403 لغير مالك على صف مالك.
-                const canActivate = user.status === SUSPENDED && ownerGuard;
                 return (
                   <tr key={user.id} className="border-t border-line">
                     <td className="px-4 py-3 text-ink">{user.full_name}</td>
@@ -314,29 +458,16 @@ function UsersTable({
                     </td>
                     {canManage && (
                       <td className={cell}>
-                        <div className="flex gap-2">
-                          {/* لا يظهر قبل وصول السقف الحالي: النموذج الفارغ يستبدل سقفاً قائماً بلا علم أحد. */}
-                          {limitsKnown && (
-                            <Button variant="secondary" onClick={() => onSetLimits(user, entry)} disabled={busy}>
-                              ضبط السقف
-                            </Button>
-                          )}
-                          {canSuspend && (
-                            <Button variant="secondary" onClick={() => onSuspend(user)} disabled={busy}>
-                              إيقاف
-                            </Button>
-                          )}
-                          {canActivate && (
-                            <Button
-                              onClick={() => onActivate(user)}
-                              disabled={busy || (activatingId !== null && activatingId !== user.id)}
-                              loading={activatingId === user.id}
-                              loadingText="جارٍ التفعيل…"
-                            >
-                              إعادة تفعيل
-                            </Button>
-                          )}
-                        </div>
+                        <UserActions
+                          user={user}
+                          me={me}
+                          entry={entry}
+                          busy={busy}
+                          onSetLimits={onSetLimits}
+                          onSuspend={onSuspend}
+                          onActivate={onActivate}
+                          activatingId={activatingId}
+                        />
                       </td>
                     )}
                   </tr>
