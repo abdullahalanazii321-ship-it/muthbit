@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
+import { isPasswordValid, passwordMessage } from '../lib/passwordPolicy.js';
 import Logo from '../components/Logo.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
 import Detail from '../components/Detail.jsx';
+import PasswordRules from '../components/PasswordRules.jsx';
 
 /**
  * نوعا الحساب. path والمفاتيح حرفياً كما في مخططي zod في الخادم:
@@ -47,7 +49,6 @@ const VAT_MAX = 20;
 const CITY_MAX = 80;
 const PERSON_NAME_MAX = 160;
 const PHONE_MAX = 30;
-const PASSWORD_MIN = 8;
 // حدّ الفئة المقترحة بعد التشذيب — في مخطط المورد وحده.
 const SUGGESTED_CATEGORY_MIN = 2;
 const SUGGESTED_CATEGORY_MAX = 100;
@@ -64,7 +65,6 @@ const MESSAGES = {
   nameTooShort: 'حرفان على الأقل.',
   crNumber: 'السجل التجاري يجب أن يكون 10 أرقام.',
   email: 'البريد الإلكتروني غير صحيح.',
-  password: 'كلمة المرور 8 محارف على الأقل.',
   passwordMismatch: 'كلمتا المرور غير متطابقتين.',
   categories: 'اختر فئة واحدة على الأقل، أو اكتب فئتك إن لم تجدها.',
   suggestedCategory: 'الفئة المقترحة من 2 إلى 100 محرف.'
@@ -151,7 +151,10 @@ function validate(form, choice) {
   const email = form.email.trim();
   if (present('email', email) && !EMAIL_PATTERN.test(email)) errors.email = MESSAGES.email;
 
-  if (present('password', form.password) && form.password.length < PASSWORD_MIN) errors.password = MESSAGES.password;
+  // الرسالة تسمّي الشروط الناقصة بنصّ الخادم نفسه.
+  if (present('password', form.password) && !isPasswordValid(form.password)) {
+    errors.password = passwordMessage(form.password);
+  }
 
   if (present('passwordConfirm', form.passwordConfirm) && form.passwordConfirm !== form.password) {
     errors.passwordConfirm = MESSAGES.passwordMismatch;
@@ -325,15 +328,24 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
   }
 
   // ما يشترك فيه كل حقل: المعرّف والقيمة والتعطيل، وتحته رسالة خطئه أو إرشاده.
-  function fieldProps(name, note) {
+  function fieldProps(name, note, { keepNote = false } = {}) {
     const error = fieldErrors[name];
+    const errorLine = error ? <p className="text-signal">{error}</p> : null;
     return {
       id: fieldId(name),
       value: form[name],
       onChange: update(name),
       disabled: submitting,
       'aria-invalid': error ? true : undefined,
-      hint: error ? <p className="text-signal">{error}</p> : note
+      // keepNote لقائمة شروط كلمة المرور: تبقى تحت الخطأ لأنها هي التي تقول كيف يُصلَح.
+      hint: keepNote ? (
+        <>
+          {errorLine}
+          {note}
+        </>
+      ) : (
+        errorLine || note
+      )
     };
   }
 
@@ -439,12 +451,14 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
         <Field label={kind.personNameLabel} autoComplete="name" maxLength={PERSON_NAME_MAX} {...fieldProps('fullName')} />
         <Field label="البريد الإلكتروني" type="email" dir="ltr" autoComplete="email" {...fieldProps('email')} />
         <Field label="الجوال" optional type="tel" dir="ltr" autoComplete="tel" maxLength={PHONE_MAX} {...fieldProps('phone')} />
+        {/* بلا maxLength عمداً: القصّ الصامت يجعل المستخدم يظن أنه ضبط كلمة أطول مما حُفظ.
+            الطول الأقصى شرط في القائمة يظهر غير محقّق، والخادم يرفض. */}
         <Field
           label="كلمة المرور"
           type="password"
           dir="ltr"
           autoComplete="new-password"
-          {...fieldProps('password', <p className="text-muted">ثمانية محارف على الأقل.</p>)}
+          {...fieldProps('password', <PasswordRules value={form.password} />, { keepNote: true })}
         />
         <Field
           label="تأكيد كلمة المرور"

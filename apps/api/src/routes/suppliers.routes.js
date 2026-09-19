@@ -7,6 +7,7 @@ const env = require('../config/env');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { requireReason } = require('../utils/reason');
+const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const { badRequest, notFound, conflict, forbidden } = require('../utils/errors');
 
 const router = express.Router();
@@ -36,7 +37,7 @@ const registerSchema = z.object({
     full_name: z.string().min(2).max(160),
     email: z.string().email(),
     phone: z.string().max(30).optional(),
-    password: z.string().min(8)
+    password: passwordSchema
   })
 });
 
@@ -48,7 +49,10 @@ const registerSchema = z.object({
 router.post('/register', async (req, res, next) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) throw badRequest('بيانات تسجيل المورد غير مكتملة.', parsed.error.flatten());
+    if (!parsed.success) {
+      const message = passwordErrorMessage(parsed.error) || 'بيانات تسجيل المورد غير مكتملة.';
+      throw badRequest(message, parsed.error.flatten());
+    }
     const { supplier, admin } = parsed.data;
     const suggestedCategory = supplier.suggested_category || null;
     // المورد الذي لا يجد فئته يكتبها، فلا يُغلق التسجيل في وجهه. ويجوز الجمع بين الاثنين.

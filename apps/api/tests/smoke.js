@@ -14,11 +14,13 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
 const request = require('supertest');
+const bcrypt = require('bcryptjs');
 const createApp = require('../src/app');
 const db = require('../src/db/knex');
 const { setLimitsEnabledForTests } = require('../src/middleware/rateLimit');
 const sentry = require('../src/utils/sentry');
 const envConfig = require('../src/config/env');
+const { PASSWORD_MAX } = require('../src/utils/password');
 
 const app = createApp();
 const PASSWORD = 'Test@1234';
@@ -1299,6 +1301,83 @@ async function run() {
       overviewRow.approved_suppliers_count === 1 &&
       overviewForOwner.status === 403,
     { platform: overviewForPlatform.status, row: overviewRow, owner: overviewForOwner.status }
+  );
+
+  section('٢٤ — سياسة كلمة المرور');
+
+  // الرفض يُختبر عبر تسجيل الشركة: مسار عام بلا رمز، ومخططه هو مخطط تسجيل المورد
+  // وإنشاء المستخدم نفسه — الثلاثة تستورد passwordSchema من utils/password.js،
+  // فما يُرفض هنا يُرفض فيها. وهذا هو معنى «مصدر واحد للسياسة».
+  const policyStamp = Date.now();
+  const policyCr = (offset) => String(policyStamp + offset).slice(-10);
+  const registerWith = (password, offset) =>
+    request(app)
+      .post('/api/auth/register-company')
+      .send({
+        company: { name: `شركة فحص السياسة ${policyStamp + offset}`, cr_number: policyCr(offset), city: 'الرياض' },
+        owner: {
+          full_name: 'مالك فحص السياسة',
+          email: `pw-${policyStamp + offset}@company-test.sa`,
+          password
+        }
+      });
+  const said = (res) => (res.body.error && res.body.error.message) || null;
+
+  const noUpper = await registerWith('abcdefg1!', 1);
+  check('كلمة بلا حرف لاتيني كبير تُرفض', noUpper.status === 400, { status: noUpper.status, message: said(noUpper) });
+
+  const noLower = await registerWith('ABCDEFG1!', 2);
+  check('كلمة بلا حرف لاتيني صغير تُرفض', noLower.status === 400, { status: noLower.status, message: said(noLower) });
+
+  const noDigit = await registerWith('Abcdefgh!', 3);
+  check('كلمة بلا رقم تُرفض', noDigit.status === 400, { status: noDigit.status, message: said(noDigit) });
+
+  const noSymbol = await registerWith('Abcdefg1', 4);
+  check('كلمة بلا رمز خاص تُرفض', noSymbol.status === 400, { status: noSymbol.status, message: said(noSymbol) });
+
+  // سبعة محارف تحقّق الشروط الأربعة كلها: الرفض للطول وحده لا لغيره.
+  const tooShort = await registerWith('Abc123!', 5);
+  check('كلمة أقصر من ثمانية محارف تُرفض', tooShort.status === 400, { status: tooShort.status, message: said(tooShort) });
+
+  const tooLong = await registerWith(`Abc1!${'x'.repeat(PASSWORD_MAX)}`, 6);
+  check(`كلمة أطول من ${PASSWORD_MAX} محرفاً تُرفض`, tooLong.status === 400, { status: tooLong.status, message: said(tooLong) });
+
+  // الرسالة تسمّي ما ينقص. «كلمة مرور غير صالحة» لا تقول للمستخدم ماذا يفعل.
+  check(
+    'رسالة الرفض تسمّي الشرط الناقص تحديداً',
+    said(noSymbol) !== null &&
+      said(noSymbol).includes('رمز خاص') &&
+      !said(noSymbol).includes('حرف لاتيني كبير') &&
+      said(noDigit) !== null &&
+      said(noDigit).includes('رقم'),
+    { noSymbol: said(noSymbol), noDigit: said(noDigit) }
+  );
+
+  const strong = await registerWith('Muthbit@2026', 7);
+  check(
+    'كلمة تحقّق الشروط الأربعة والطول تُقبل',
+    strong.status === 201 && (await userExists(`pw-${policyStamp + 7}@company-test.sa`)),
+    { status: strong.status, message: said(strong) }
+  );
+
+  // الحارس: حساب أُنشئ قبل التشديد بكلمة لا تحقّق السياسة الجديدة.
+  // يُنشأ في القاعدة مباشرة لأن المسار يرفضها الآن — وهذا حال كل حساب قائم.
+  // لو طُبّقت السياسة على مخطط الدخول لانقفلت هذه الحسابات كلها. هذا الفحص يمنع ذلك.
+  const legacyPassword = 'oldpass1';
+  const legacyEmail = `legacy-${policyStamp}@owner-demo.sa`;
+  await db('users').insert({
+    email: legacyEmail,
+    password_hash: await bcrypt.hash(legacyPassword, envConfig.bcryptRounds),
+    full_name: 'حساب سابق لتشديد السياسة',
+    role: 'procurement_buyer',
+    status: 'active',
+    company_id: owner.user.company_id
+  });
+  const legacyLogin = await request(app).post('/api/auth/login').send({ email: legacyEmail, password: legacyPassword });
+  check(
+    'حساب قائم بكلمة لا تحقّق السياسة ما زال يسجّل الدخول',
+    legacyLogin.status === 200 && Boolean(legacyLogin.body.token),
+    { status: legacyLogin.status, message: said(legacyLogin) }
   );
 
   console.log(`\n${'='.repeat(58)}`);

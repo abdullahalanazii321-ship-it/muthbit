@@ -7,6 +7,7 @@ const env = require('../config/env');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole, scopeToCompany, resolvePlatformCompany } = require('../middleware/auth');
 const { requireReason } = require('../utils/reason');
+const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const { badRequest, notFound, forbidden, conflict } = require('../utils/errors');
 
 const router = express.Router();
@@ -133,7 +134,7 @@ router.get('/:id/users', requireRole('company_owner', 'finance_manager', 'procur
 const createUserSchema = z.object({
   full_name: z.string().min(2).max(160),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: passwordSchema,
   role: z.enum(MANAGEABLE_ROLES)
 });
 
@@ -142,7 +143,10 @@ router.post('/:id/users', requireRole('company_owner', 'finance_manager'), async
   try {
     if (req.params.id !== req.user.companyId) throw forbidden();
     const parsed = createUserSchema.safeParse(req.body);
-    if (!parsed.success) throw badRequest('بيانات المستخدم غير صحيحة.', parsed.error.flatten());
+    if (!parsed.success) {
+      const message = passwordErrorMessage(parsed.error) || 'بيانات المستخدم غير صحيحة.';
+      throw badRequest(message, parsed.error.flatten());
+    }
 
     const email = parsed.data.email.toLowerCase().trim();
     if (await db('users').where({ email }).first()) throw conflict('البريد الإلكتروني مسجّل مسبقاً.');

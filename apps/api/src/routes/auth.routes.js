@@ -7,6 +7,7 @@ const env = require('../config/env');
 const audit = require('../utils/audit');
 const { signToken, requireAuth } = require('../middleware/auth');
 const { badRequest, unauthorized, conflict } = require('../utils/errors');
+const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ const registerSchema = z.object({
     full_name: z.string().min(2).max(160),
     email: z.string().email(),
     phone: z.string().max(30).optional(),
-    password: z.string().min(8, 'كلمة المرور 8 محارف على الأقل.')
+    password: passwordSchema
   })
 });
 
@@ -33,7 +34,11 @@ const registerSchema = z.object({
 router.post('/register-company', async (req, res, next) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) throw badRequest('بيانات التسجيل غير مكتملة أو غير صحيحة.', parsed.error.flatten());
+    if (!parsed.success) {
+      // رسالة كلمة المرور تسبق العامة: هي وحدها التي تقول للمستخدم ما ينقص.
+      const message = passwordErrorMessage(parsed.error) || 'بيانات التسجيل غير مكتملة أو غير صحيحة.';
+      throw badRequest(message, parsed.error.flatten());
+    }
     const { company, owner } = parsed.data;
 
     const email = owner.email.toLowerCase().trim();

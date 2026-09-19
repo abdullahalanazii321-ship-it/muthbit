@@ -4,11 +4,13 @@ import { useSession } from '../lib/session.js';
 import { CREATABLE_ROLES, canManageTeam } from '../lib/access.js';
 import { formatSAR, roleLabel, userStatusLabel } from '../lib/labels.js';
 import { useResource } from '../lib/useResource.js';
+import { isPasswordValid } from '../lib/passwordPolicy.js';
 import AppHeader from '../components/AppHeader.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
 import LimitsForm from '../components/LimitsForm.jsx';
+import PasswordRules from '../components/PasswordRules.jsx';
 import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
 import { Badge } from '../components/StatusBadge.jsx';
 import { RecordCard, RecordCards, RecordField } from '../components/RecordCard.jsx';
@@ -18,7 +20,6 @@ const ACTIONS_COLUMN = 'إجراءات';
 const SKELETON_ROWS = 4;
 const SUSPENDED = 'suspended';
 const OWNER_ROLE = 'company_owner';
-const MIN_PASSWORD_LENGTH = 8; // createUserSchema في الخادم
 
 const isUsersResponse = (data) => Array.isArray(data?.users);
 
@@ -515,7 +516,7 @@ function NewUserForm({ companyPath, onCreated, onCancel }) {
   const canSubmit =
     form.fullName.trim() !== '' &&
     form.email.trim() !== '' &&
-    form.password.length >= MIN_PASSWORD_LENGTH &&
+    isPasswordValid(form.password) &&
     CREATABLE_ROLES.includes(form.role);
 
   function update(field) {
@@ -577,7 +578,7 @@ function NewUserForm({ companyPath, onCreated, onCancel }) {
         value={form.password}
         onChange={update('password')}
         disabled={submitting}
-        hint={<p className="text-muted">ثمانية محارف على الأقل.</p>}
+        hint={<PasswordRules value={form.password} />}
       />
       {/* الأدوار الأربعة التي يقبلها الخادم وحدها — عرض غيرها كذب. */}
       <Field
