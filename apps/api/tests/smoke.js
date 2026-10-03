@@ -21,9 +21,41 @@ const { setLimitsEnabledForTests } = require('../src/middleware/rateLimit');
 const sentry = require('../src/utils/sentry');
 const envConfig = require('../src/config/env');
 const { PASSWORD_MAX } = require('../src/utils/password');
+const { assertLocalDatabase } = require('../src/db/assertLocalDatabase');
+
+/**
+ * أول سطر قبل أي شيء: هذه الفحوص تكتب في القاعدة التي يسمّيها DATABASE_URL —
+ * تُنشئ مستخدمين وموردين وعروضاً، وتعبث بسجل التدقيق لتثبت حصانته.
+ * فتشغيلها على الإنتاج يلوّث بياناته. والحارس نفسه الذي يحرس البذور
+ * و reset — لا نسخة منه ولا باب خلفيّ.
+ */
+assertLocalDatabase('فحوص المسار الكامل');
 
 const app = createApp();
-const PASSWORD = 'Test@1234';
+
+/**
+ * كلمة مرور حسابات البذور. ليست مكتوبة هنا ولا في أي ملف:
+ * هي نفسها التي بُذرت بها القاعدة، فتُقرأ من المصدر نفسه (SEED_PASSWORD).
+ * وبدونها تفشل كل محاولة دخول برسالة مبهمة — فالتوقّف هنا أوضح.
+ */
+const PASSWORD = process.env.SEED_PASSWORD;
+if (!PASSWORD) {
+  // eslint-disable-next-line no-console
+  console.error(
+    [
+      '',
+      'رُفض التشغيل — SEED_PASSWORD غير مضبوط.',
+      '',
+      '  الفحوص تدخل بحسابات البذور، وكلمة مرورها لم تعد مكتوبة في المستودع.',
+      '  اضبط المتغيّر نفسه الذي بذرت به القاعدة، ثم أعد الأمر:',
+      '',
+      '      SEED_PASSWORD=<الكلمة> npm run api:seed',
+      '      SEED_PASSWORD=<الكلمة> npm run api:test',
+      ''
+    ].join('\n')
+  );
+  process.exit(1);
+}
 
 let passed = 0;
 let failed = 0;

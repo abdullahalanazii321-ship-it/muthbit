@@ -108,10 +108,14 @@ GET    /api/audit
 ## التشغيل
 ```
 npm install
+export SEED_PASSWORD='<كلمة تحقّق السياسة>'   # نفسها للبذر وللفحوص
 npm run api:migrate && npm run api:seed
 npm run api:test        # ١٢٦ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
+
+**الثلاثة — البذر و reset والفحوص — ترفض العمل على قاعدة غير محلية** (`assertLocalDatabase`).
+والفحوص ترفض العمل بلا `SEED_PASSWORD`، لأن حسابات البذور لم تعد بكلمة مرور مكتوبة.
 
 حسابات العرض — كلمة المرور **ليست في أي ملف**. اضبط `SEED_PASSWORD` قبل البذر، أو خذ الكلمة العشوائية التي يطبعها البذر مرة واحدة في آخره.
 `admin@platform-demo.sa` · `admin@owner-demo.sa` · `admin@finance-demo.sa` · `admin@buyer-demo.sa` · `admin@supplier-demo.sa` · `admin@supplier2-demo.sa` (مورد قيد التوثيق)
