@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
-import { formatDate, formatSAR, statusLabels } from '../lib/labels.js';
+import { statusLabels } from '../lib/labels.js';
 import AppHeader from '../components/AppHeader.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
-import RequestsTable from '../components/RequestsTable.jsx';
-import StatusBadge from '../components/StatusBadge.jsx';
-import { RecordCard, RecordCards, RecordField } from '../components/RecordCard.jsx';
-
-const SKELETON_CARDS = 5;
+import RequestsList from '../components/RequestsList.jsx';
 
 // الحالات التي يمكن أن توجد فعلاً اليوم. delivered و closed و cancelled بلا مسار يوصل إليها بعد.
 const FILTER_STATUSES = ['sourcing', 'pending_approval', 'approved', 'rejected', 'ordered'];
@@ -99,81 +95,6 @@ export default function RequestsPage() {
         </div>
       </main>
     </div>
-  );
-}
-
-/**
- * قائمة الطلبات بشكلين لعرض واحد من البيانات:
- * بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
- * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
- *
- * البطاقات هنا لا في RequestsTable عمداً: الجدول تستعمله لوحة المنصة أيضاً
- * بـ linked=false، وهي شاشة خارج هذه المهمة فلا يتغيّر شكلها.
- */
-function RequestsList({ loading = false, requests = [] }) {
-  return (
-    <>
-      <div className="md:hidden">
-        <RequestCards loading={loading} requests={requests} />
-      </div>
-      <div className="hidden md:block">
-        <RequestsTable loading={loading} requests={requests} />
-      </div>
-    </>
-  );
-}
-
-/** بطاقات العرض الضيق: بطاقة لكل طلب، فيها كل ما في صف الجدول بلا نقصان. */
-function RequestCards({ loading, requests }) {
-  if (loading) {
-    return (
-      <RecordCards label="جارٍ التحميل…" busy>
-        {Array.from({ length: SKELETON_CARDS }, (_, card) => (
-          <li key={card} className="rounded border border-line bg-surface p-4">
-            <div className="h-5 w-36 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
-            <div className="mt-3 flex flex-col gap-2">
-              {Array.from({ length: 4 }, (_, line) => (
-                <div key={line} className="h-4 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
-              ))}
-            </div>
-          </li>
-        ))}
-      </RecordCards>
-    );
-  }
-
-  return (
-    <RecordCards label="الطلبات">
-      {requests.map((request) => (
-        <RecordCard
-          key={request.id}
-          // relative لتغطية الرابط البطاقة كلها، والخلفية تتغيّر بالمرور وبالتركيز معاً.
-          className="relative hover:bg-surface-2 focus-within:bg-surface-2"
-          title={
-            /* الرابط على المرجع يمتد فوق البطاقة كلها (after:inset-0): الضغط في أي موضع منها
-               يفتح التفاصيل، ويبقى رابطاً حقيقياً فيعمل «فتح في تبويب جديد». */
-            <Link
-              to={`/requests/${request.id}`}
-              className="font-mono after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-seal"
-            >
-              <bdi>{request.reference}</bdi>
-            </Link>
-          }
-          badge={<StatusBadge status={request.status} />}
-        >
-          <RecordField label="الصنف">{request.item}</RecordField>
-          <RecordField label="الكمية">
-            <span className="tabular-nums">{request.quantity}</span>
-          </RecordField>
-          <RecordField label="المبلغ">
-            <span className="tabular-nums">{formatSAR(request.amount)}</span>
-          </RecordField>
-          <RecordField label="التاريخ">
-            <span className="tabular-nums">{formatDate(request.created_at)}</span>
-          </RecordField>
-        </RecordCard>
-      ))}
-    </RecordCards>
   );
 }
 

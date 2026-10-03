@@ -20,8 +20,9 @@ import AuditEvents from '../components/AuditEvents.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
 import ReasonField, { reasonReady } from '../components/ReasonField.jsx';
-import RequestsTable from '../components/RequestsTable.jsx';
+import RequestsList from '../components/RequestsList.jsx';
 import { Badge } from '../components/StatusBadge.jsx';
+import { RecordCard, RecordCards, RecordCardsSkeleton, RecordField } from '../components/RecordCard.jsx';
 
 const TABS = [
   { key: 'companies', label: 'الشركات' },
@@ -140,7 +141,7 @@ function TabButton({ selected, onClick, children }) {
       role="tab"
       aria-selected={selected}
       onClick={onClick}
-      className={`-mb-px rounded-t-sm border-b-2 px-4 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal ${
+      className={`-mb-px shrink-0 rounded-t-sm border-b-2 px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal sm:px-4 sm:py-2 ${
         selected ? 'border-seal text-ink' : 'border-transparent text-muted hover:text-ink'
       }`}
     >
@@ -187,7 +188,7 @@ function CompaniesTab({ statusFilter, onStatus, openCompanyId, onOpen, onClose, 
 
   return (
     <div>
-      <div className="max-w-xs">
+      <div className="md:max-w-xs">
         <Field id="company-status" as="select" label="الحالة" value={statusFilter} onChange={(e) => onStatus(e.target.value)}>
           <option value="">الكل</option>
           {COMPANY_STATUSES.map((status) => (
@@ -216,7 +217,7 @@ function CompaniesTab({ statusFilter, onStatus, openCompanyId, onOpen, onClose, 
       )}
 
       <div className="mt-6">
-        {companies.status === 'loading' && <CompaniesTable loading />}
+        {companies.status === 'loading' && <CompaniesList loading />}
 
         {companies.status === 'error' && <LoadError message={companies.error.message} onRetry={companies.reload} />}
 
@@ -231,7 +232,7 @@ function CompaniesTab({ statusFilter, onStatus, openCompanyId, onOpen, onClose, 
         {companies.status === 'ready' && list.length > 0 && (
           <>
             {companies.refreshing && <Refreshing />}
-            <CompaniesTable
+            <CompaniesList
               companies={list}
               busy={companies.refreshing}
               onVerify={(company) => openPanel({ kind: 'verify', company })}
@@ -246,6 +247,75 @@ function CompaniesTab({ statusFilter, onStatus, openCompanyId, onOpen, onClose, 
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * أزرار الشركة — تعريف واحد يستعمله الجدول والبطاقات معاً.
+ * لو نُسخ لظهر إجراء في أحد الشكلين دون الآخر، وهذا بالضبط ما لا يجوز:
+ * ما يمكن على الحاسب يمكن على الجوال.
+ * التوثيق لغير الموثّقة، والإيقاف للموثّقة وحدها — لا زر بلا أثر.
+ */
+function companyActions({ company, busy, onVerify, onSuspend, onOpen }) {
+  return (
+    <>
+      {company.status !== 'active' && (
+        <Button onClick={() => onVerify(company)} disabled={busy}>
+          توثيق
+        </Button>
+      )}
+      {company.status === 'active' && (
+        <Button variant="signal" onClick={() => onSuspend(company)} disabled={busy}>
+          إيقاف
+        </Button>
+      )}
+      <Button variant="secondary" onClick={() => onOpen(company)} disabled={busy}>
+        فتح الشركة
+      </Button>
+    </>
+  );
+}
+
+/**
+ * الشركات بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * المخفي منهما display:none فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
+ */
+function CompaniesList(props) {
+  return (
+    <>
+      <div className="md:hidden">
+        <CompaniesCards {...props} />
+      </div>
+      <div className="hidden md:block">
+        <CompaniesTable {...props} />
+      </div>
+    </>
+  );
+}
+
+/** بطاقات العرض الضيق: بطاقة لكل شركة، فيها كل ما في صف الجدول بلا نقصان. */
+function CompaniesCards({ loading = false, companies = [], busy = false, onVerify, onSuspend, onOpen }) {
+  if (loading) return <RecordCardsSkeleton lines={3} />;
+
+  return (
+    <RecordCards label="الشركات" busy={busy}>
+      {companies.map((company) => (
+        <RecordCard
+          key={company.id}
+          title={company.name}
+          badge={<Badge tone={companyStatusTones[company.status]}>{companyStatusLabel(company.status)}</Badge>}
+          actions={companyActions({ company, busy, onVerify, onSuspend, onOpen })}
+        >
+          <RecordField label="السجل التجاري">
+            <bdi className="font-mono">{company.cr_number}</bdi>
+          </RecordField>
+          <RecordField label="المدينة">{company.city || '—'}</RecordField>
+          <RecordField label="تاريخ التسجيل">
+            <span className="tabular-nums">{formatDate(company.created_at)}</span>
+          </RecordField>
+        </RecordCard>
+      ))}
+    </RecordCards>
   );
 }
 
@@ -265,22 +335,7 @@ function CompaniesTable({ loading = false, companies = [], busy = false, onVerif
           </td>
           <td className={`${cell} tabular-nums`}>{formatDate(company.created_at)}</td>
           <td className={cell}>
-            <div className="flex flex-wrap gap-2">
-              {/* التوثيق لغير الموثّقة، والإيقاف للموثّقة وحدها — لا زر بلا أثر. */}
-              {company.status !== 'active' && (
-                <Button onClick={() => onVerify(company)} disabled={busy}>
-                  توثيق
-                </Button>
-              )}
-              {company.status === 'active' && (
-                <Button variant="signal" onClick={() => onSuspend(company)} disabled={busy}>
-                  إيقاف
-                </Button>
-              )}
-              <Button variant="secondary" onClick={() => onOpen(company)} disabled={busy}>
-                فتح الشركة
-              </Button>
-            </div>
+            <div className="flex flex-wrap gap-2">{companyActions({ company, busy, onVerify, onSuspend, onOpen })}</div>
           </td>
         </tr>
       ))}
@@ -408,7 +463,7 @@ function CompanyInspect({ companyId, company, resolving, onClose, view, onView }
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-display text-xl font-semibold text-ink">
+        <h2 className="min-w-0 break-words font-display text-xl font-semibold text-ink">
           {company ? (
             company.name
           ) : resolving ? (
@@ -462,7 +517,7 @@ function CompanyInspect({ companyId, company, resolving, onClose, view, onView }
 function CompanyRequests({ path }) {
   const requests = useResource(path, isRequestsResponse);
 
-  if (requests.status === 'loading') return <RequestsTable loading />;
+  if (requests.status === 'loading') return <RequestsList loading linked={false} />;
   if (requests.status === 'error') return <LoadError message={requests.error.message} onRetry={requests.reload} />;
 
   const list = requests.data.requests;
@@ -474,7 +529,7 @@ function CompanyRequests({ path }) {
     );
   }
   // بلا روابط: شاشة تفاصيل الطلب مبنية لمستخدم الشركة ولن تعمل كما ينبغي من هنا.
-  return <RequestsTable requests={list} linked={false} />;
+  return <RequestsList requests={list} linked={false} />;
 }
 
 /* ───────────────────────────── الموردون ───────────────────────────── */
@@ -503,7 +558,7 @@ function SuppliersTab({ statusFilter, onStatus }) {
 
   return (
     <div>
-      <div className="max-w-xs">
+      <div className="md:max-w-xs">
         <Field id="supplier-status" as="select" label="حالة التوثيق" value={statusFilter} onChange={(e) => onStatus(e.target.value)}>
           <option value="">الكل</option>
           {SUPPLIER_STATUSES.map((status) => (
@@ -535,7 +590,7 @@ function SuppliersTab({ statusFilter, onStatus }) {
       )}
 
       <div className="mt-6">
-        {suppliers.status === 'loading' && <SuppliersTable loading />}
+        {suppliers.status === 'loading' && <SuppliersList loading />}
 
         {suppliers.status === 'error' && <LoadError message={suppliers.error.message} onRetry={suppliers.reload} />}
 
@@ -550,7 +605,7 @@ function SuppliersTab({ statusFilter, onStatus }) {
         {suppliers.status === 'ready' && list.length > 0 && (
           <>
             {suppliers.refreshing && <Refreshing />}
-            <SuppliersTable
+            <SuppliersList
               suppliers={list}
               busy={suppliers.refreshing}
               onAction={(kind, supplier) => openPanel({ kind, supplier })}
@@ -562,13 +617,102 @@ function SuppliersTab({ statusFilter, onStatus }) {
   );
 }
 
+/**
+ * أزرار المورد — تعريف واحد للجدول والبطاقات.
+ * الأزرار تتبع حالة التوثيق: المعلّق يُوثَّق أو يُرفض، والموثّق يُوقَف،
+ * والمرفوض والموقوف يُعاد توثيقهما. لا زر بلا أثر.
+ */
+function supplierActions({ supplier, busy, onAction }) {
+  const status = supplier.verification_status;
+  return (
+    <>
+      {status === 'pending' && (
+        <>
+          <Button onClick={() => onAction('verify', supplier)} disabled={busy}>
+            توثيق
+          </Button>
+          <Button variant="signal" onClick={() => onAction('reject', supplier)} disabled={busy}>
+            رفض
+          </Button>
+        </>
+      )}
+      {status === 'verified' && (
+        <Button variant="signal" onClick={() => onAction('suspend', supplier)} disabled={busy}>
+          إيقاف
+        </Button>
+      )}
+      {(status === 'rejected' || status === 'suspended') && (
+        <Button onClick={() => onAction('verify', supplier)} disabled={busy}>
+          إعادة التوثيق
+        </Button>
+      )}
+    </>
+  );
+}
+
+/** التقييم كما يُعرض في الشكلين: قيمة وعدد، أو شرطة إن لم يُقيَّم بعد. */
+function supplierRating(supplier) {
+  const rated = supplier.rating !== null && supplier.rating !== undefined && supplier.rating !== '';
+  if (!rated) return <span className="text-muted">—</span>;
+  return (
+    <div className="tabular-nums">
+      <p className="text-ink">{formatRating(supplier.rating)}</p>
+      {supplier.rating_count > 0 && <p className="text-xs text-muted">{formatRatingCount(supplier.rating_count)}</p>}
+    </div>
+  );
+}
+
+/**
+ * الموردون بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * هذه أهم قائمة على الجوال: منها يُوثَّق المورد وأنت خارج المكتب.
+ */
+function SuppliersList(props) {
+  return (
+    <>
+      <div className="md:hidden">
+        <SuppliersCards {...props} />
+      </div>
+      <div className="hidden md:block">
+        <SuppliersTable {...props} />
+      </div>
+    </>
+  );
+}
+
+/** بطاقات العرض الضيق: بطاقة لكل مورد، فيها كل ما في صف الجدول بلا نقصان. */
+function SuppliersCards({ loading = false, suppliers = [], busy = false, onAction }) {
+  if (loading) return <RecordCardsSkeleton lines={3} />;
+
+  return (
+    <RecordCards label="الموردون" busy={busy}>
+      {suppliers.map((supplier) => (
+        <RecordCard
+          key={supplier.id}
+          title={supplier.name}
+          badge={
+            <Badge tone={supplierStatusTones[supplier.verification_status]}>
+              {supplierStatusLabel(supplier.verification_status)}
+            </Badge>
+          }
+          actions={supplierActions({ supplier, busy, onAction })}
+        >
+          <RecordField label="السجل التجاري">
+            <bdi className="font-mono">{supplier.cr_number}</bdi>
+          </RecordField>
+          <RecordField label="المدينة">{supplier.city || '—'}</RecordField>
+          <RecordField label="التقييم">{supplierRating(supplier)}</RecordField>
+        </RecordCard>
+      ))}
+    </RecordCards>
+  );
+}
+
 function SuppliersTable({ loading = false, suppliers = [], busy = false, onAction }) {
   const cell = 'whitespace-nowrap px-4 py-3';
   return (
     <TableShell columns={SUPPLIER_COLUMNS} loading={loading}>
       {suppliers.map((supplier) => {
         const status = supplier.verification_status;
-        const rated = supplier.rating !== null && supplier.rating !== undefined && supplier.rating !== '';
         return (
           <tr key={supplier.id} className="border-t border-line">
             <td className="px-4 py-3 text-ink">{supplier.name}</td>
@@ -579,41 +723,9 @@ function SuppliersTable({ loading = false, suppliers = [], busy = false, onActio
             <td className={cell}>
               <Badge tone={supplierStatusTones[status]}>{supplierStatusLabel(status)}</Badge>
             </td>
-            <td className={`${cell} tabular-nums`}>
-              {rated ? (
-                <div>
-                  <p className="text-ink">{formatRating(supplier.rating)}</p>
-                  {supplier.rating_count > 0 && (
-                    <p className="text-xs text-muted">{formatRatingCount(supplier.rating_count)}</p>
-                  )}
-                </div>
-              ) : (
-                <span className="text-muted">—</span>
-              )}
-            </td>
+            <td className={cell}>{supplierRating(supplier)}</td>
             <td className={cell}>
-              <div className="flex flex-wrap gap-2">
-                {status === 'pending' && (
-                  <>
-                    <Button onClick={() => onAction('verify', supplier)} disabled={busy}>
-                      توثيق
-                    </Button>
-                    <Button variant="signal" onClick={() => onAction('reject', supplier)} disabled={busy}>
-                      رفض
-                    </Button>
-                  </>
-                )}
-                {status === 'verified' && (
-                  <Button variant="signal" onClick={() => onAction('suspend', supplier)} disabled={busy}>
-                    إيقاف
-                  </Button>
-                )}
-                {(status === 'rejected' || status === 'suspended') && (
-                  <Button onClick={() => onAction('verify', supplier)} disabled={busy}>
-                    إعادة التوثيق
-                  </Button>
-                )}
-              </div>
+              <div className="flex flex-wrap gap-2">{supplierActions({ supplier, busy, onAction })}</div>
             </td>
           </tr>
         );
@@ -689,7 +801,10 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
         </ul>
       </Alert>
 
-      <fieldset>
+      {/* min-w-0 ليس زائداً: المتصفح يفرض على fieldset وحده min-width:min-content في أنماطه
+          الافتراضية، فلا ينكمش تحت عرض أطول كلمة فيه. واسم فئة بلا مسافة يدفع الصفحة كلها
+          إلى تمرير أفقي. قيسَ عند ٣٦٠ بكسل: ٤٥٥ قبله و٣٦٠ بعده. */}
+      <fieldset className="min-w-0">
         <legend className="text-sm font-medium text-ink">الفئات المعتمدة</legend>
 
         {/* نص كتبه المورد لا قيمة من النظام: بلون الإشارة لا بمظهر الفئات، وبلا مربّع اختيار —
@@ -697,7 +812,7 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
         {suggested && (
           <div className="mt-3 flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="rounded border border-signal bg-signal-soft px-3 py-2.5 text-sm text-signal">
+              <p className="min-w-0 break-words rounded border border-signal bg-signal-soft px-3 py-2.5 text-sm text-signal">
                 فئة مقترحة من المورد: <bdi className="font-semibold">{suggested}</bdi>
               </p>
               {/* الاقتراح يصير فئة مرة واحدة: بعد إضافتها يختفي الزر، وتظهر الفئة أدناه مختارة. */}
@@ -715,7 +830,7 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
             )}
 
             {added.length > 0 && (
-              <p role="status" className="text-sm text-muted">
+              <p role="status" className="break-words text-sm text-muted">
                 أُضيفت فئة «{added[added.length - 1].name_ar}» واختيرت أدناه.
               </p>
             )}
@@ -742,15 +857,15 @@ function VerifySupplier({ supplier, onDone, onCancel }) {
           <>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {list.map((category) => (
-                <label key={category.id} className="flex items-center gap-2 text-sm text-ink">
+                <label key={category.id} className="flex min-w-0 items-center gap-2 text-sm text-ink">
                   <input
                     type="checkbox"
-                    className="size-4 rounded-sm border-line-strong accent-seal"
+                    className="size-4 shrink-0 rounded-sm border-line-strong accent-seal"
                     checked={chosen.includes(category.id)}
                     onChange={() => toggle(category.id)}
                     disabled={action.sending}
                   />
-                  {category.name_ar}
+                  <span className="min-w-0 break-words">{category.name_ar}</span>
                 </label>
               ))}
             </div>
@@ -955,7 +1070,7 @@ function CategoriesTab() {
       )}
 
       <div className="mt-6">
-        {categories.status === 'loading' && <CategoriesTable loading />}
+        {categories.status === 'loading' && <CategoriesList loading />}
 
         {categories.status === 'error' && <LoadError message={categories.error.message} onRetry={categories.reload} />}
 
@@ -966,7 +1081,7 @@ function CategoriesTab() {
         {categories.status === 'ready' && list.length > 0 && (
           <>
             {categories.refreshing && <Refreshing />}
-            <CategoriesTable
+            <CategoriesList
               categories={list}
               busy={categories.refreshing}
               onRename={(category) => openPanel({ kind: 'rename', category })}
@@ -975,6 +1090,57 @@ function CategoriesTab() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * الفئات بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * الاسم الإنجليزي والمعرّف لاتينيان داخل صفحة عربية، فكلاهما في bdi بـ dir="ltr"
+ * كما في الجدول — وإلا انقلب ترتيب المحارف عند حرف غير لاتيني.
+ */
+function CategoriesList(props) {
+  return (
+    <>
+      <div className="md:hidden">
+        <CategoriesCards {...props} />
+      </div>
+      <div className="hidden md:block">
+        <CategoriesTable {...props} />
+      </div>
+    </>
+  );
+}
+
+/** بطاقات العرض الضيق: بطاقة لكل فئة، فيها كل ما في صف الجدول بلا نقصان. */
+function CategoriesCards({ loading = false, categories = [], busy = false, onRename }) {
+  if (loading) return <RecordCardsSkeleton lines={3} />;
+
+  return (
+    <RecordCards label="الفئات" busy={busy}>
+      {categories.map((category) => (
+        <RecordCard
+          key={category.id}
+          title={category.name_ar}
+          actions={
+            <Button variant="secondary" onClick={() => onRename(category)} disabled={busy}>
+              إعادة تسمية
+            </Button>
+          }
+        >
+          <RecordField label="الاسم الإنجليزي">
+            <bdi dir="ltr">{category.name_en}</bdi>
+          </RecordField>
+          <RecordField label="المعرّف">
+            <bdi dir="ltr" className="font-mono">
+              {category.slug}
+            </bdi>
+          </RecordField>
+          <RecordField label="الموردون المعتمدون">
+            <span className="tabular-nums">{category.approved_suppliers_count ?? '—'}</span>
+          </RecordField>
+        </RecordCard>
+      ))}
+    </RecordCards>
   );
 }
 
@@ -1148,7 +1314,7 @@ function PanelCard({ title, children }) {
         id={headingId}
         ref={headingRef}
         tabIndex={-1}
-        className="font-display text-lg font-semibold text-ink focus:outline-none"
+        className="break-words font-display text-lg font-semibold text-ink focus:outline-none"
       >
         {title}
       </h2>

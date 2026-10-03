@@ -6,8 +6,7 @@
  * مكدّسة: الاسم عنواناً، وبقية الأعمدة أزواج «تسمية: قيمة»، والإجراءات أسفلها
  * أزراراً بعرض كامل — لا معلومة تُحذف ولا إجراء يُخفى.
  *
- * عام عمداً ليُعاد استعماله في بقية جداول المنصة لاحقاً،
- * ولا يُستعمل اليوم إلا في شاشة الفريق.
+ * عام عمداً: تستعمله شاشة الفريق وجداول لوحة المنصة الثلاثة وقائمة الطلبات.
  */
 
 /** حاوية البطاقات. label اسم القائمة لقارئ الشاشة — يقوم مقام عنوان الجدول. */
@@ -51,5 +50,27 @@ export function RecordField({ label, children }) {
       <dt className="shrink-0 text-muted">{label}</dt>
       <dd className="min-w-0 break-words text-ink">{children}</dd>
     </div>
+  );
+}
+
+/**
+ * هيكل الانتظار بشكل البطاقات: عنوان وأسطر بعدد حقول البطاقة.
+ * هنا لا في كل شاشة: أربع قوائم تنتظر بالشكل نفسه، ونسخه أربع مرات يجعلها تفترق مع الوقت.
+ */
+export function RecordCardsSkeleton({ count = 5, lines = 4 }) {
+  const bar = 'rounded-sm bg-surface-2 motion-safe:animate-pulse';
+  return (
+    <RecordCards label="جارٍ التحميل…" busy>
+      {Array.from({ length: count }, (_, card) => (
+        <li key={card} className="rounded border border-line bg-surface p-4">
+          <div className={`h-5 w-36 ${bar}`} />
+          <div className="mt-3 flex flex-col gap-2">
+            {Array.from({ length: lines }, (_, line) => (
+              <div key={line} className={`h-4 ${bar}`} />
+            ))}
+          </div>
+        </li>
+      ))}
+    </RecordCards>
   );
 }
