@@ -1,15 +1,55 @@
 'use strict';
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { passwordMessage } = require('../../utils/password');
+const { assertLocalDatabase } = require('../assertLocalDatabase');
 
 /**
  * بيانات تجريبية للتطوير والعرض.
- * كل الحسابات بكلمة مرور واحدة: Test@1234
  * النمط: admin@[الدور]-demo.sa
  *
  * الشركتان مختلفتان عمداً حتى يمكن إثبات العزل: لا ترى إحداهما طلبات الأخرى.
+ *
+ * كلمة المرور لم تعد مكتوبة هنا. كانت ثابتةً في هذا الملف وفي README.md
+ * و CLAUDE.md، فصارت معروفةً لكل من يقرأ المستودع — وقد وُجدت هذه الحسابات
+ * حيّة في قاعدة الإنتاج بها، وعُطّلت في ٢٠٢٦-١٠-٠٣. فمصدرها الآن أحد اثنين:
+ *   · SEED_PASSWORD من البيئة إن ضُبط،
+ *   · وإلا كلمة عشوائية تُولَّد عند كل تشغيل وتُطبع في آخره مرة واحدة.
+ * وفي الحالين لا تدخل أي كلمة مرور إلى git.
  */
 
-const PASSWORD = 'Test@1234';
+// ٢٤ محرفاً من أربع مجموعات، بلا " ' ` \ | / < > لأنها تتعثّر في الصدفة واللصق.
+const LOWER = 'abcdefghijkmnopqrstuvwxyz';
+const UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const DIGIT = '23456789';
+const SYMBOL = '!@#$%^&*()-_=+[]{};:,.?';
+const ALL = LOWER + UPPER + DIGIT + SYMBOL;
+
+const pick = (set) => set[crypto.randomInt(set.length)];
+
+/** كلمة عشوائية تحقّق سياسة الخادم — تُقاس بـ passwordMessage نفسها لا بنسخة منها. */
+function generatePassword() {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const chars = [pick(LOWER), pick(UPPER), pick(DIGIT), pick(SYMBOL)];
+    while (chars.length < 24) chars.push(pick(ALL));
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    const candidate = chars.join('');
+    if (passwordMessage(candidate) === null) return candidate;
+  }
+  throw new Error('تعذّر توليد كلمة مرور تحقّق السياسة');
+}
+
+// كلمة من البيئة تُقبل كما هي بشرط أن تحقّق السياسة — وإلا فالتوقّف خير من بذرة لا تُدخَل.
+const fromEnv = process.env.SEED_PASSWORD;
+if (fromEnv) {
+  const gap = passwordMessage(fromEnv);
+  if (gap) throw new Error(`SEED_PASSWORD لا تحقّق السياسة: ${gap}`);
+}
+const PASSWORD = fromEnv || generatePassword();
+const GENERATED = !fromEnv;
 
 const CATEGORIES = [
   { slug: 'it', name_ar: 'تقنية المعلومات', name_en: 'Information technology' },
@@ -21,6 +61,9 @@ const CATEGORIES = [
 ];
 
 exports.seed = async function seed(knex) {
+  // أول سطر، قبل أي حذف: لا بذر إلا على قاعدة على هذا الجهاز.
+  assertLocalDatabase('البذور');
+
   await knex('audit_log').del();
   await knex('purchase_orders').del();
   await knex('approvals').del();
@@ -163,7 +206,9 @@ exports.seed = async function seed(knex) {
   // eslint-disable-next-line no-console
   console.log([
     '',
-    'حسابات تجريبية (كلمة المرور للجميع: Test@1234)',
+    GENERATED
+      ? `حسابات تجريبية — كلمة المرور للجميع (وُلّدت الآن، تُطبع مرة واحدة):\n  ${PASSWORD}\n`
+      : 'حسابات تجريبية — كلمة المرور للجميع: قيمة SEED_PASSWORD التي ضبطتها.',
     '  admin@platform-demo.sa    مسؤول المنصة',
     '  admin@owner-demo.sa       مالك — شركة الأفق للمقاولات',
     '  admin@finance-demo.sa     مدير مالي — الأفق (المعتمِد)',

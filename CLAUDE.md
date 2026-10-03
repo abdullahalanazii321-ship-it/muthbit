@@ -113,9 +113,11 @@ npm run api:test        # ١٢٦ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 
-حسابات العرض — كلمة المرور `Test@1234`:
-`admin@platform-demo.sa` · `admin@owner-demo.sa` · `admin@finance-demo.sa` · `admin@buyer-demo.sa` · `admin@supplier-demo.sa`
+حسابات العرض — كلمة المرور **ليست في أي ملف**. اضبط `SEED_PASSWORD` قبل البذر، أو خذ الكلمة العشوائية التي يطبعها البذر مرة واحدة في آخره.
+`admin@platform-demo.sa` · `admin@owner-demo.sa` · `admin@finance-demo.sa` · `admin@buyer-demo.sa` · `admin@supplier-demo.sa` · `admin@supplier2-demo.sa` (مورد قيد التوثيق)
 (وشركة ثانية `admin@owner2-demo.sa` · `admin@buyer2-demo.sa` لإثبات العزل بين الشركات)
+
+**البذور للتطوير المحلي وحده.** أول ما يفعله `001_demo.js` حذف كل صفوف الجداول — فلا يُشغَّل على الإنتاج أبداً.
 
 ## المبدأ الحاكم
 الافتراض هو المنع. إن غمض شيء، امنع واسأل — لا تسمح.
