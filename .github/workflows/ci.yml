@@ -10,7 +10,9 @@ on:
 jobs:
   test:
     name: الفحوص والبناء
-    runs-on: ubuntu-latest
+    # مثبّت لا latest: ubuntu-latest ينتقل إلى 26.04 من تلقاء نفسه، فيتغيّر ما تحت الفحوص
+    # بلا التزام يشرح سقوطها. الانتقال إلى إصدار أحدث قرارٌ بالتزام، لا مفاجأة.
+    runs-on: ubuntu-24.04
 
     # قاعدة بيانات مؤقتة تُنشأ مع كل تشغيل وتُهدم بعده.
     # لا صلة لها بقاعدة الإنتاج، ولا سرّ حقيقي في هذا الملف إطلاقاً.
@@ -44,10 +46,10 @@ jobs:
 
     steps:
       - name: جلب الشيفرة
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: تهيئة Node 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
