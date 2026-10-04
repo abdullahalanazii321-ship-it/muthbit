@@ -23,6 +23,9 @@ const container = 'mx-auto w-full max-w-6xl px-5';
 const focusRing =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mkt-mint';
 const textLink = `rounded-sm text-mkt-muted transition-colors hover:text-mkt-paper ${focusRing}`;
+// روابط التذييل قائمة مستقلة لا روابط داخل جملة: تحت ٧٦٨ بكسل كل رابط ٤٤ بكسل ارتفاعاً (py-3 حول سطر ٢٠).
+// فوقها inline بلا حشوة كما كانت حرفياً.
+const footerLink = `${textLink} inline-block py-3 md:inline md:py-0`;
 
 // معرّفات الأقسام واحدة في اللغتين، فروابط التمرير لا تتغيّر بالتبديل.
 const SECTION_IDS = ['features', 'parties', 'how'];
@@ -396,19 +399,20 @@ function SiteHeader() {
               </li>
             ))}
           </ul>
-          {/* النص بلغة الوجهة (EN أو ع)، و lang عليه لينطقه قارئ الشاشة بلغته، و aria-label اسم اللغة كاملاً. */}
+          {/* النص بلغة الوجهة (EN أو ع)، و lang عليه لينطقه قارئ الشاشة بلغته، و aria-label اسم اللغة كاملاً.
+              تحت ٧٦٨ بكسل: الزرّان ٤٦ بكسل ارتفاعاً (py-3) والمبدّل ٤٤ عرضاً — أول ما يلمسه الزائر. فوقها كما كانا. */}
           <button
             type="button"
             onClick={toggle}
             lang={t.toggle.lang}
             aria-label={t.toggle.label}
-            className={`inline-flex min-w-10 items-center justify-center rounded border border-mkt-line-strong px-3 py-2 text-sm font-semibold text-mkt-paper transition-colors hover:border-mkt-mint ${focusRing}`}
+            className={`inline-flex min-w-11 items-center justify-center rounded border border-mkt-line-strong px-3 py-3 text-sm font-semibold text-mkt-paper transition-colors hover:border-mkt-mint md:min-w-10 md:py-2 ${focusRing}`}
           >
             {t.toggle.text}
           </button>
           <Link
             to="/login"
-            className={`rounded border border-mkt-line-strong px-4 py-2 text-sm font-medium text-mkt-paper transition-colors hover:border-mkt-mint ${focusRing}`}
+            className={`rounded border border-mkt-line-strong px-4 py-3 text-sm font-medium text-mkt-paper transition-colors hover:border-mkt-mint md:py-2 ${focusRing}`}
           >
             {t.nav.signIn}
           </Link>
@@ -736,18 +740,18 @@ function SiteFooter() {
             <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
               {SECTION_IDS.map((id) => (
                 <li key={id}>
-                  <a href={`#${id}`} className={textLink}>
+                  <a href={`#${id}`} className={footerLink}>
                     {t.sections[id]}
                   </a>
                 </li>
               ))}
               <li>
-                <Link to="/register" className={textLink}>
+                <Link to="/register" className={footerLink}>
                   {t.footer.createAccount}
                 </Link>
               </li>
               <li>
-                <Link to="/login" className={textLink}>
+                <Link to="/login" className={footerLink}>
                   {t.footer.signIn}
                 </Link>
               </li>
