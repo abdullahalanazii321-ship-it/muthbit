@@ -117,14 +117,17 @@ function EventRow({ event }) {
           )}
         </p>
 
-        <div className="md:w-16 md:shrink-0 md:text-end">
+        <div className="mt-2 md:mt-0 md:w-16 md:shrink-0 md:text-end">
           {showDetails && (
+            // تحت ٧٦٨ بكسل: بعرض الصف وارتفاع ٤٦ بكسل، فهدف اللمس بحجم إصبع لا ٥٣×٢٢.
+            // py-3 لا py-2.5: سطر text-sm ثابت ٢٠ بكسل، فـ py-2.5 تعطي ٤٢ — دون حدّ ٤٤.
+            // فوقها الصنف الصغير كما كان حرفياً.
             <button
               type="button"
               aria-expanded={open}
               aria-controls={detailsId}
               onClick={() => setOpen((current) => !current)}
-              className={`rounded-sm border border-line-strong px-2 py-0.5 text-xs font-medium text-ink hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal ${
+              className={`w-full rounded-sm border border-line-strong px-4 py-3 text-sm font-medium text-ink hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal md:w-auto md:px-2 md:py-0.5 md:text-xs ${
                 open ? 'bg-surface-2' : ''
               }`}
             >
@@ -135,8 +138,12 @@ function EventRow({ event }) {
       </div>
 
       {showDetails && open && (
-        <div id={detailsId} className="mt-3 overflow-x-auto rounded bg-surface-2">
-          <pre dir="ltr" className="p-3 font-mono text-xs text-ink">
+        <div id={detailsId} className="mt-3 rounded bg-surface-2">
+          {/* السطر الطويل يلتفّ في كل المقاسات. كان الصندوق overflow-x-auto، لكنه داخل صفحة RTL والنص LTR،
+              فما جاوز حافته قُصّ بلا تمرير يصل إليه — على الحاسب والجوال. pre-wrap يحفظ المسافات البادئة
+              والأسطر كما هي فلا يتغيّر من JSON حرف، و break-words يكسر القيمة الطويلة بلا مسافة.
+              والسطر الذي يتّسع له الصندوق يُرسم كما كان تماماً. */}
+          <pre dir="ltr" className="whitespace-pre-wrap break-words p-3 font-mono text-xs text-ink">
             {formatPayload(event.payload)}
           </pre>
         </div>

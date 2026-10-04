@@ -43,7 +43,10 @@ export default function AuditPage() {
   return (
     <div className="min-h-screen bg-ground">
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      {/* break-words موروثة تحت ٧٦٨ بكسل: اسم المنفّذ الطويل أو رمز إجراء غير معروف بلا مسافة ينكسر
+          بدل أن يدفع الصفحة أفقياً. وفوقها break-normal يُبقي الحاسب كما كان حرفياً — قيس عند ٧٦٨:
+          بدونه ينكسر المعرّف المختصر في عمود الكيان على سطرين. */}
+      <main className="mx-auto max-w-5xl break-words px-4 py-8 md:break-normal">
         <h1 className="font-display text-2xl font-semibold text-ink">سجل التدقيق</h1>
         <p className="mt-1 text-sm text-muted">سجل نهائي لا يُعدَّل ولا يُحذف — القيد مفروض في قاعدة البيانات نفسها.</p>
 
