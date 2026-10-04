@@ -13,6 +13,7 @@
 // knexfile.test هو knexfile.development نفسه — القاعدة واحدة ولا شيء يتغيّر غير هذا.
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
+const crypto = require('crypto');
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const createApp = require('../src/app');
@@ -22,6 +23,8 @@ const sentry = require('../src/utils/sentry');
 const envConfig = require('../src/config/env');
 const { PASSWORD_MAX } = require('../src/utils/password');
 const { assertLocalDatabase } = require('../src/db/assertLocalDatabase');
+const mail = require('../src/utils/mail');
+const passwordReset = require('../src/services/passwordReset');
 
 /**
  * أول سطر قبل أي شيء: هذه الفحوص تكتب في القاعدة التي يسمّيها DATABASE_URL —
@@ -1411,6 +1414,234 @@ async function run() {
     legacyLogin.status === 200 && Boolean(legacyLogin.body.token),
     { status: legacyLogin.status, message: said(legacyLogin) }
   );
+
+  section('٢٥ — نسيت كلمة المرور وإعادة التعيين');
+
+  // حسابان يُنشآن هنا لا من البذور: إعادة التعيين تغيّر كلمة المرور، وحسابات البذور
+  // يدخل بها كل ما سبق بكلمة واحدة. فعّال يُعاد تعيينه، وموقوف يجب ألا يصله شيء.
+  const resetStamp = Date.now();
+  const resetUserEmail = `reset-${resetStamp}@owner-demo.sa`;
+  const suspendedResetEmail = `reset-suspended-${resetStamp}@owner-demo.sa`;
+  const missingResetEmail = `nobody-${resetStamp}@nowhere-demo.sa`;
+  const oldResetPassword = 'Old@pass2026';
+  const newResetPassword = 'New@pass2026';
+  const [resetUser] = await db('users')
+    .insert({
+      email: resetUserEmail,
+      password_hash: await bcrypt.hash(oldResetPassword, envConfig.bcryptRounds),
+      full_name: 'مستخدم فحص إعادة التعيين',
+      role: 'procurement_buyer',
+      status: 'active',
+      company_id: owner.user.company_id
+    })
+    .returning('*');
+  await db('users').insert({
+    email: suspendedResetEmail,
+    password_hash: await bcrypt.hash(oldResetPassword, envConfig.bcryptRounds),
+    full_name: 'مستخدم موقوف لفحص إعادة التعيين',
+    role: 'procurement_buyer',
+    status: 'suspended',
+    company_id: owner.user.company_id
+  });
+
+  const forgot = (email, ip) => {
+    const call = request(app).post('/api/auth/forgot-password');
+    if (ip) call.set('X-Forwarded-For', ip);
+    return call.send({ email });
+  };
+  const resetWith = (token, password, ip) => {
+    const call = request(app).post('/api/auth/reset-password');
+    if (ip) call.set('X-Forwarded-For', ip);
+    return call.send({ token, password });
+  };
+  const sha256 = (value) => crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+  const tokenInMail = (message) => (message.text.match(/#token=([A-Za-z0-9_-]+)/) || [])[1] || null;
+  const resetTokensOf = (userId) => db('password_reset_tokens').where({ user_id: userId }).orderBy('created_at');
+
+  mail.clearTestOutbox();
+  const forgotExisting = await forgot(resetUserEmail);
+  const forgotMissing = await forgot(missingResetEmail);
+  const forgotSuspended = await forgot(suspendedResetEmail);
+  check(
+    'رد «نسيت كلمة المرور» متطابق حرفياً لبريد موجود وغير موجود وموقوف',
+    [forgotExisting, forgotMissing, forgotSuspended].every((r) => r.status === 200) &&
+      JSON.stringify(forgotExisting.body) === JSON.stringify(forgotMissing.body) &&
+      JSON.stringify(forgotExisting.body) === JSON.stringify(forgotSuspended.body) &&
+      forgotExisting.body.message === passwordReset.FORGOT_MESSAGE,
+    { existing: forgotExisting.body, missing: forgotMissing.body, suspended: forgotSuspended.body }
+  );
+
+  await passwordReset.whenIdle();
+  const resetOutbox = mail.testOutbox();
+  check(
+    'رسالة واحدة لبريد الحساب الفعّال وحده — لا شيء لغير الموجود ولا للموقوف',
+    resetOutbox.length === 1 && resetOutbox[0].to === resetUserEmail,
+    { sent: resetOutbox.map((m) => m.to) }
+  );
+
+  const firstResetToken = tokenInMail(resetOutbox[0] || { text: '' });
+  const [firstTokenRow] = await resetTokensOf(resetUser.id);
+  check(
+    'القاعدة تحفظ بصمة SHA-256 للرمز لا الرمز نفسه',
+    Boolean(firstResetToken) &&
+      Boolean(firstTokenRow) &&
+      firstTokenRow.token_hash === sha256(firstResetToken) &&
+      firstTokenRow.token_hash !== firstResetToken,
+    { stored: firstTokenRow && firstTokenRow.token_hash }
+  );
+
+  const ttlMinutes = firstTokenRow
+    ? (new Date(firstTokenRow.expires_at) - new Date(firstTokenRow.created_at)) / 60000
+    : null;
+  check('صلاحية الرمز ساعة واحدة', ttlMinutes !== null && ttlMinutes > 59 && ttlMinutes <= 60.5, { ttlMinutes });
+
+  // رمز منتهٍ يُدرج مباشرة: لا أحد ينتظر ساعة في فحص.
+  const expiredResetToken = crypto.randomBytes(32).toString('base64url');
+  await db('password_reset_tokens').insert({
+    user_id: resetUser.id,
+    token_hash: sha256(expiredResetToken),
+    expires_at: new Date(Date.now() - 60 * 1000)
+  });
+  const expiredTry = await resetWith(expiredResetToken, newResetPassword);
+  check(
+    'رمز منتهي الصلاحية يُرفض',
+    expiredTry.status === 400 && expiredTry.body.error.message === passwordReset.INVALID_TOKEN_MESSAGE,
+    { status: expiredTry.status, body: expiredTry.body }
+  );
+  const unknownTry = await resetWith(crypto.randomBytes(32).toString('base64url'), newResetPassword);
+
+  const weakTry = await resetWith(firstResetToken, 'weakpass');
+  const [firstAfterWeak] = await db('password_reset_tokens').where({ token_hash: sha256(firstResetToken || '') });
+  check(
+    'كلمة لا تحقّق السياسة تُرفض برسالة السياسة، ولا تستهلك الرمز',
+    weakTry.status === 400 &&
+      weakTry.body.error.message.startsWith('كلمة المرور يجب أن تحقّق') &&
+      Boolean(firstAfterWeak) &&
+      firstAfterWeak.used_at === null,
+    { status: weakTry.status, message: weakTry.body.error && weakTry.body.error.message }
+  );
+
+  // رمز ثانٍ صالح للمستخدم نفسه، فيكون لحذف «الرموز الأخرى» ما يُحذف: صالح ومنتهٍ معاً.
+  await forgot(resetUserEmail);
+  await passwordReset.whenIdle();
+  const tokensBefore = await resetTokensOf(resetUser.id);
+
+  const resetOk = await resetWith(firstResetToken, newResetPassword);
+  check(
+    'إعادة التعيين بالرمز الصالح تنجح',
+    resetOk.status === 200 && resetOk.body.message === passwordReset.RESET_SUCCESS_MESSAGE,
+    { status: resetOk.status, body: resetOk.body }
+  );
+
+  const tokensAfter = await resetTokensOf(resetUser.id);
+  check(
+    'بعد النجاح حُذفت رموز المستخدم الأخرى، وبقي المستعمل معلَّماً',
+    tokensBefore.length === 3 &&
+      tokensAfter.length === 1 &&
+      tokensAfter[0].token_hash === sha256(firstResetToken) &&
+      tokensAfter[0].used_at !== null,
+    { before: tokensBefore.length, after: tokensAfter.length }
+  );
+
+  const reuseTry = await resetWith(firstResetToken, 'Another@pass2026');
+  check(
+    'الرمز المستعمل مرة لا يعمل ثانية',
+    reuseTry.status === 400 && reuseTry.body.error.message === passwordReset.INVALID_TOKEN_MESSAGE,
+    { status: reuseTry.status, body: reuseTry.body }
+  );
+
+  check(
+    'رسالة الرفض واحدة للرمز المنتهي وغير الموجود والمستعمل',
+    unknownTry.status === 400 &&
+      unknownTry.body.error.message === expiredTry.body.error.message &&
+      reuseTry.body.error.message === expiredTry.body.error.message,
+    { expired: expiredTry.body.error, unknown: unknownTry.body.error, reused: reuseTry.body.error }
+  );
+
+  const oldPasswordLogin = await request(app).post('/api/auth/login').send({ email: resetUserEmail, password: oldResetPassword });
+  const newPasswordLogin = await request(app).post('/api/auth/login').send({ email: resetUserEmail, password: newResetPassword });
+  check(
+    'بعد إعادة التعيين: الكلمة القديمة تفشل والجديدة تدخل',
+    oldPasswordLogin.status === 401 && newPasswordLogin.status === 200 && Boolean(newPasswordLogin.body.token),
+    { old: oldPasswordLogin.status, new: newPasswordLogin.status }
+  );
+
+  const resetAudit = await db('audit_log').where({ action: 'user.password_reset', entity_id: String(resetUser.id) });
+  check(
+    'إعادة التعيين حدث في سجل التدقيق بفاعلها',
+    resetAudit.length === 1 && resetAudit[0].actor_user_id === resetUser.id,
+    { rows: resetAudit.length }
+  );
+
+  // ── المحددات ── عناوين 203.0.113.x للتوثيق كما في القسم ١٨، ولا تتقاطع مع عناوينه.
+  setLimitsEnabledForTests(true);
+  try {
+    // عدّاد الإنشاء للعنوان الافتراضي استُنفد في القسم ١٨ ونافذته ساعة: ردّه هو ردّ محدّد قائم،
+    // يُقارَن به حرفياً لا بنص مكتوب هنا.
+    const existingLimiterBlock = await request(app).post('/api/auth/register-company').send({});
+
+    const byEmailAttempts = async (email, base) => {
+      const out = [];
+      for (let attempt = 1; attempt <= 6; attempt += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        out.push(await forgot(email, `203.0.113.${base + attempt}`));
+      }
+      return out;
+    };
+    const missingAttempts = await byEmailAttempts(`limit-${resetStamp}@nowhere-demo.sa`, 100);
+    const existingAttempts = await byEmailAttempts(resetUserEmail, 110);
+    const statuses = (list) => list.map((r) => r.status);
+    check(
+      'ست طلبات «نسيت» على بريد واحد من ستة عناوين: الحجب عند السادسة',
+      JSON.stringify(statuses(missingAttempts)) === JSON.stringify([200, 200, 200, 200, 200, 429]),
+      { statuses: statuses(missingAttempts) }
+    );
+    check(
+      'حدّ البريد يُحجب عند العدد نفسه لحساب موجود وغير موجود — لا كاشف',
+      JSON.stringify(statuses(existingAttempts)) === JSON.stringify(statuses(missingAttempts)),
+      { existing: statuses(existingAttempts), missing: statuses(missingAttempts) }
+    );
+
+    const byIp = [];
+    for (let attempt = 1; attempt <= 11; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      byIp.push(await forgot(`ip-${resetStamp}-${attempt}@nowhere-demo.sa`, '203.0.113.150'));
+    }
+    check(
+      'الطلب الحادي عشر لـ«نسيت» من عنوان واحد يُحجب',
+      byIp.slice(0, 10).every((r) => r.status === 200) && byIp[10].status === 429,
+      { statuses: statuses(byIp) }
+    );
+
+    const resetByIp = [];
+    for (let attempt = 1; attempt <= 11; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      resetByIp.push(await resetWith(crypto.randomBytes(32).toString('base64url'), newResetPassword, '203.0.113.160'));
+    }
+    check(
+      'المحاولة الحادية عشرة الفاشلة لإعادة التعيين من عنوان واحد تُحجب',
+      resetByIp.slice(0, 10).every((r) => r.status === 400) && resetByIp[10].status === 429,
+      { statuses: statuses(resetByIp) }
+    );
+
+    const blocks = [missingAttempts[5], existingAttempts[5], byIp[10], resetByIp[10], existingLimiterBlock];
+    check(
+      'ردود الحجب الجديدة كلها مطابقة حرفياً لردّ محدّد قائم',
+      existingLimiterBlock.status === 429 &&
+        blocks.every(
+          (r) =>
+            r.status === 429 &&
+            r.body.error.code === existingLimiterBlock.body.error.code &&
+            r.body.error.message === existingLimiterBlock.body.error.message &&
+            JSON.stringify(Object.keys(r.body.error)) === JSON.stringify(Object.keys(existingLimiterBlock.body.error))
+        ),
+      { messages: blocks.map((r) => r.body.error && r.body.error.message) }
+    );
+  } finally {
+    setLimitsEnabledForTests(false);
+  }
+  // طلبات «نسيت» أعلاه أطلقت مهام إصدار بعد الرد: تُنتظر قبل إغلاق اتصال القاعدة.
+  await passwordReset.whenIdle();
 
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);

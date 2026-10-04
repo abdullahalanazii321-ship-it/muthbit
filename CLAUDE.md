@@ -7,9 +7,12 @@
 إن غمض شيء: قف واسأل. لا تفترض.
 
 ## المكدّس
-- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٢٦ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
+- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٤٣ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
 - `apps/web` — React + Vite + Tailwind. **مبنيّ بالكامل:** ثماني شاشات (الدخول · الطلبات · طلب جديد · تفاصيل الطلب · بوابة المورد · لوحة المنصة · الفريق · سجل التدقيق).
   **كلها تصلح للجوال**، ومعها إنشاء الحساب وصفحة التعريف — قيست عند 360 بكسل (القاعدة ١٠).
+  وشاشتا «نسيت كلمة المرور» (`/forgot-password`) و«إعادة التعيين» (`/reset-password#token=…`) بإطار الدخول نفسه.
+- البريد: `apps/api/src/utils/mail.js` بسائقين يختارهما `MAIL_DRIVER` — `console` في التطوير (يطبع ولا يرسل)
+  و `resend` في الإنتاج (`RESEND_API_KEY` و `MAIL_FROM`). الاختبار لا يرسل أبداً، والإنتاج بلا `resend` لا يرسل ولا يطبع الرابط.
 - `packages/design` — توكنز الهوية: `tokens.css` و `tokens.js` و `tailwind.preset.cjs`
 
 ## عقد الواجهة البرمجية
@@ -26,6 +29,7 @@
 
 ## المسارات الموجودة — لا تخترع غيرها
 عام بلا رمز: `POST /api/auth/register-company` · `POST /api/auth/login` · `POST /api/suppliers/register` · `GET /health`
+· `POST /api/auth/forgot-password { email }` (ردّ واحد بالحرف دائماً) · `POST /api/auth/reset-password { token, password }`
 
 ```
 GET    /api/auth/me
@@ -115,7 +119,7 @@ GET    /api/audit
 npm install
 export SEED_PASSWORD='<كلمة تحقّق السياسة>'   # نفسها للبذر وللفحوص
 npm run api:migrate && npm run api:seed
-npm run api:test        # ١٢٦ فحصاً — يجب أن تمر كلها
+npm run api:test        # ١٤٣ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 

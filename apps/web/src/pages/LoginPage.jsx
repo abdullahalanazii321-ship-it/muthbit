@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { normalizeUser, useSession } from '../lib/session.js';
 import { homeFor } from '../lib/access.js';
@@ -14,6 +14,8 @@ const AUTOFILL_ANIMATION = 'mb-autofill';
 export default function LoginPage() {
   const { signIn } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
+  const notice = typeof location.state?.notice === 'string' ? location.state.notice : null;
   const formRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -93,6 +95,12 @@ export default function LoginPage() {
           <span className="font-display text-xl font-semibold text-ink">مثبت</span>
         </div>
         <h1 className="font-display text-2xl font-semibold text-ink">تسجيل الدخول</h1>
+        {/* بعد إعادة تعيين كلمة المرور: رسالة الخادم كما وصلت. */}
+        {notice && (
+          <div className="mt-6">
+            <Alert tone="seal">{notice}</Alert>
+          </div>
+        )}
 
         {/* noValidate: فقاعة تحقق المتصفح تظهر بلغته، ونريد رسالة الخادم العربية بدلها. */}
         <form ref={formRef} noValidate onSubmit={handleSubmit} className="mt-8 flex flex-col gap-5">
@@ -118,6 +126,14 @@ export default function LoginPage() {
             onAnimationStart={handleAutofill}
             disabled={submitting}
           />
+          {/* رابط مستقل لا داخل جملة: هدف لمسه ٤٤ بكسل (min-h-11). و -mt-3 يقرّبه من الحقل الذي يخصّه
+              بدل فجوة النموذج كاملة. */}
+          <Link
+            to="/forgot-password"
+            className="-mt-3 inline-flex min-h-11 items-center self-start rounded-sm text-sm font-medium text-ink underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+          >
+            نسيت كلمة المرور؟
+          </Link>
 
           {error && <Alert>{error}</Alert>}
 

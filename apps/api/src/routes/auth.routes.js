@@ -8,6 +8,7 @@ const audit = require('../utils/audit');
 const { signToken, requireAuth } = require('../middleware/auth');
 const { badRequest, unauthorized, conflict } = require('../utils/errors');
 const { passwordSchema, passwordErrorMessage } = require('../utils/password');
+const passwordReset = require('../services/passwordReset');
 
 const router = express.Router();
 
@@ -135,6 +136,53 @@ router.post('/login', async (req, res, next) => {
         supplier_id: user.supplier_id
       }
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const forgotSchema = z.object({ email: z.string().email() });
+
+/**
+ * نسيت كلمة المرور — عام بلا رمز.
+ * الرد واحد بالحرف ويخرج قبل أي بحث في القاعدة: لا يختلف ولا يختلف زمنه بين بريد مسجّل
+ * وغير مسجّل، موقوف أو فعّال. وإلا صار هذا المسار فهرساً لعملاء المنصة.
+ * البحث والرمز والإرسال بعد الرد (services/passwordReset.js).
+ * والبريد المشوّه وحده يُرفض بـ 400: صيغته لا تكشف شيئاً عن وجود حساب.
+ */
+router.post('/forgot-password', (req, res, next) => {
+  try {
+    const parsed = forgotSchema.safeParse(req.body);
+    if (!parsed.success) throw badRequest('البريد الإلكتروني غير صحيح.');
+    const email = parsed.data.email.toLowerCase().trim();
+
+    res.json({ message: passwordReset.FORGOT_MESSAGE });
+    passwordReset.issueInBackground(email);
+    return undefined;
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const resetSchema = z.object({
+  token: z.string().min(1).max(200),
+  password: passwordSchema
+});
+
+/**
+ * إعادة التعيين بالرمز — عام بلا رمز جلسة.
+ * كلمة المرور الجديدة بسياسة utils/password.js نفسها. والرمز الغائب والمنتهي والمستعمل
+ * رسالة واحدة لا تفرّق بينها.
+ */
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const parsed = resetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const message = passwordErrorMessage(parsed.error) || passwordReset.INVALID_TOKEN_MESSAGE;
+      throw badRequest(message);
+    }
+    await passwordReset.resetPassword({ token: parsed.data.token, password: parsed.data.password, ip: req.ip });
+    return res.json({ message: passwordReset.RESET_SUCCESS_MESSAGE });
   } catch (err) {
     return next(err);
   }

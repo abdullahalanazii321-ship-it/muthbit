@@ -71,6 +71,7 @@ export const auditActionLabels = {
   'user.login': 'تسجيل دخول',
   'user.suspended': 'إيقاف مستخدم',
   'user.activated': 'إعادة تفعيل مستخدم',
+  'user.password_reset': 'إعادة تعيين كلمة المرور',
   'limits.set': 'ضبط سقوف مشترٍ',
   'request.created': 'إنشاء طلب',
   'request.offer_selected': 'اختيار عرض',

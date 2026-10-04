@@ -3,6 +3,8 @@ import { useSession } from './lib/session.js';
 import { COMPANY_HOME, PLATFORM_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import RequestsPage from './pages/RequestsPage.jsx';
 import NewRequestPage from './pages/NewRequestPage.jsx';
@@ -39,6 +41,16 @@ export default function App() {
           </GuestOnly>
         }
       />
+      <Route
+        path="/forgot-password"
+        element={
+          <GuestOnly>
+            <ForgotPasswordPage />
+          </GuestOnly>
+        }
+      />
+      {/* بلا حارس عمداً: رابط البريد يُفتح ولو كان في المتصفح جلسة أخرى، والتحويل عنه يضيّع الرمز. */}
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/" element={<PublicHome />} />
       <Route
         path="/requests"

@@ -31,5 +31,14 @@ module.exports = {
     apiKey: process.env.WATHQ_API_KEY || null,
     baseUrl: process.env.WATHQ_BASE_URL || 'https://api.wathq.sa'
   },
-  sentryDsn: process.env.SENTRY_DSN || null
+  sentryDsn: process.env.SENTRY_DSN || null,
+  // عنوان الواجهة الذي يُبنى منه رابط إعادة التعيين في البريد. إن غاب فهو عنوان CORS نفسه —
+  // وهما عنوان واحد في التطوير وفي Render اليوم.
+  appUrl: (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:5173').replace(/\/+$/, ''),
+  // اختيار السائق في utils/mail.js وحده؛ هنا القيم الخام كما ضُبطت.
+  mail: {
+    driver: process.env.MAIL_DRIVER || null,
+    resendApiKey: process.env.RESEND_API_KEY || null,
+    from: process.env.MAIL_FROM || null
+  }
 };

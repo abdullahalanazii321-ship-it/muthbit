@@ -172,6 +172,44 @@ const agentKeyLimiter = createLimiter({
   requestWasSuccessful: (req, res) => res.statusCode !== 401
 });
 
+/**
+ * نسيت كلمة المرور — حدّان كالدخول: بالمصدر ثم بالبريد المُستهدَف.
+ *
+ * الرسالة GENERIC_MESSAGE في الاثنين، وهي نفسها رسالة محدّد الإنشاء والحد العام القائمين:
+ * لو انفردت رسالة البريد لعرف المهاجم أنه بلغ حدّ بريد بعينه. والحدّ بالبريد يعدّ كل طلب
+ * سواء وُجد الحساب أو لا — العدّ قبل المسار ولا يعرف عن الحساب شيئاً — فلا يكشف وجوده.
+ *
+ * كل طلب يُعدّ (لا skipSuccessfulRequests): الرد ٢٠٠ دائماً، فلا «فاشل» يُميَّز.
+ * ١٠ لكل عنوان في ١٥ دقيقة توقف من يمسح قوائم بريد، و٥ لكل بريد في الساعة توقف إغراق
+ * صندوق ضحية برسائل إعادة التعيين — وتبقى لصاحبه الحقيقي محاولات تكفيه.
+ */
+const forgotPasswordLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  messageAr: GENERIC_MESSAGE
+});
+
+const forgotPasswordEmailLimiter = createLimiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  messageAr: GENERIC_MESSAGE,
+  keyGenerator: loginEmailKey
+});
+
+/**
+ * إعادة التعيين بالرمز — حدّ بالمصدر: ١٠ محاولات فاشلة في ١٥ دقيقة.
+ *
+ * لا حدّ بالبريد هنا: الطلب لا يحمل بريداً، والهدف يُعرف من الرمز وحده. وحدٌّ بالرمز لا يحمي
+ * شيئاً — من يخمّن يغيّر الرمز مع كل محاولة فلا يتكرّر مفتاح أبداً، والرمز ٣٢ بايتاً لا يُخمَّن أصلاً.
+ * الحماية الفعلية هنا: كلفة bcrypt لكل محاولة، فيُحدّ المصدر لئلا يشغل المعالج.
+ */
+const resetPasswordLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  messageAr: GENERIC_MESSAGE,
+  skipSuccessfulRequests: true
+});
+
 /** سقف عام لكل ما تحت /api: ١٢٠ طلباً في الدقيقة. لا يشمل /health. */
 const apiLimiter = createLimiter({
   windowMs: 60 * 1000,
@@ -184,6 +222,9 @@ module.exports = {
   loginEmailLimiter,
   accountCreationLimiter,
   agentKeyLimiter,
+  forgotPasswordLimiter,
+  forgotPasswordEmailLimiter,
+  resetPasswordLimiter,
   apiLimiter,
   setLimitsEnabledForTests
 };
