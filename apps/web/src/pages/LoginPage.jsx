@@ -82,8 +82,9 @@ export default function LoginPage() {
   }
 
   // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
+  // break-words موروثة: رسالة خادم طويلة بلا مسافة كانت تمدّ الصفحة إلى ١١٠٩ بكسل على شاشة ٣٦٠.
   return (
-    <main className="mb-entrance flex min-h-screen items-center justify-center bg-ground px-4 py-12">
+    <main className="mb-entrance flex min-h-screen items-center justify-center break-words bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة الرأسية: الرمز ثم الاسم تحته.
             aria-hidden على الرمز لأن الاسم مكتوب تحته نصاً مرئياً، وبدونها يُنطق «مثبت» مرتين. */}

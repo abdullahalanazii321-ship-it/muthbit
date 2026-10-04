@@ -225,8 +225,9 @@ export default function RegisterPage() {
   const [rateLimitMessage, setRateLimitMessage] = useState(null);
 
   // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
+  // break-words موروثة: رسائل 400 واسم المنشأة في «بانتظار التوثيق» بلا مسافة كانت تمدّ الصفحة أفقياً.
   return (
-    <main className="mb-entrance flex min-h-screen items-center justify-center bg-ground px-4 py-12">
+    <main className="mb-entrance flex min-h-screen items-center justify-center break-words bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة نفسها في شاشة الدخول: الرمز ثم الاسم تحته، و aria-hidden لأن الاسم مكتوب نصاً. */}
         <div className="mb-6 flex flex-col items-start gap-2">
@@ -554,9 +555,12 @@ function CategoriesPicker({ categories, selected, onToggle, other, onToggleOther
 
       {categories.status === 'ready' && categories.items.length > 0 && (
         <>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {/* تحت ٧٦٨ بكسل: كل سطر ٤٤ بكسل (py-3 حول سطر ٢٠) فيُلمس بإصبع لا بطرفه. فوقها كما كان.
+              والاسم في span بـ min-w-0: النص المجرد في flex لا ينكمش تحت أطول كلمة فيه.
+              و grid-cols-1: عمود الشبكة الضمني يتّسع لأطول كلمة، فاسم فئة بلا مسافة كان يمدّ الصفحة إلى ٦٦٢. */}
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {categories.items.map((category, index) => (
-              <label key={category.slug} className="flex items-center gap-2 text-sm text-ink">
+              <label key={category.slug} className="flex items-center gap-2 py-3 text-sm text-ink md:py-0">
                 <input
                   type="checkbox"
                   id={index === 0 ? fieldId('categories') : undefined}
@@ -565,13 +569,13 @@ function CategoriesPicker({ categories, selected, onToggle, other, onToggleOther
                   onChange={() => onToggle(category.slug)}
                   disabled={disabled}
                 />
-                {category.name_ar}
+                <span className="min-w-0">{category.name_ar}</span>
               </label>
             ))}
           </div>
 
           {/* تحت الشبكة لا بين فئاتها: ما يُكتب هنا اقتراح يراجعه فريق المنصة، لا فئة تُختار. */}
-          <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+          <label className="mt-3 flex items-center gap-2 py-3 text-sm text-ink md:py-0">
             <input
               type="checkbox"
               className="size-4 rounded-sm border-line-strong accent-seal"
@@ -651,7 +655,8 @@ function RegistrationReceived({ result }) {
         <Alert>لن يعمل تسجيل الدخول قبل اكتمال التوثيق. سنراجع طلبك ونفعّل الحساب.</Alert>
       </div>
 
-      <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
+      {/* grid-cols-1: العمود الضمني يتّسع لأطول كلمة، فاسم منشأة بلا مسافة كان يمدّ الصفحة أفقياً. */}
+      <dl className="mt-6 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <Detail label={result.nameLabel}>{result.name}</Detail>
         <Detail label="السجل التجاري">
           <bdi className="font-mono">{result.crNumber}</bdi>
