@@ -16,6 +16,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 const crypto = require('crypto');
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const createApp = require('../src/app');
 const db = require('../src/db/knex');
 const { setLimitsEnabledForTests } = require('../src/middleware/rateLimit');
@@ -1444,6 +1445,11 @@ async function run() {
     company_id: owner.user.company_id
   });
 
+  // جلسة مفتوحة بالكلمة القديمة قبل أي إعادة تعيين: يجب أن تنتهي حين تتغيّر الكلمة.
+  const sessionBeforeReset = await request(app)
+    .post('/api/auth/login')
+    .send({ email: resetUserEmail, password: oldResetPassword });
+
   const forgot = (email, ip) => {
     const call = request(app).post('/api/auth/forgot-password');
     if (ip) call.set('X-Forwarded-For', ip);
@@ -1565,6 +1571,29 @@ async function run() {
     oldPasswordLogin.status === 401 && newPasswordLogin.status === 200 && Boolean(newPasswordLogin.body.token),
     { old: oldPasswordLogin.status, new: newPasswordLogin.status }
   );
+
+  const oldSessionAfterReset = await request(app).get('/api/auth/me').set(auth(sessionBeforeReset.body.token || ''));
+  const newSessionAfterReset = await request(app).get('/api/auth/me').set(auth(newPasswordLogin.body.token || ''));
+  check(
+    'الجلسة المفتوحة قبل إعادة التعيين تنتهي (401)، والجلسة الجديدة تعمل',
+    sessionBeforeReset.status === 200 &&
+      oldSessionAfterReset.status === 401 &&
+      oldSessionAfterReset.body.error.code === 'unauthorized' &&
+      newSessionAfterReset.status === 200,
+    { before: sessionBeforeReset.status, oldAfter: oldSessionAfterReset.status, newAfter: newSessionAfterReset.status }
+  );
+
+  // رمز صدر قبل وجود إصدار الجلسة (بلا sv) يُعدّ 0: النشر لا يُخرج أحداً.
+  // يُوقَّع هنا بالمفتاح نفسه وبالحقول نفسها عدا sv — كما كانت رموز ما قبل الهجرة.
+  const legacyToken = jwt.sign(
+    { sub: owner.user.id, role: owner.user.role, company_id: owner.user.company_id, supplier_id: null },
+    envConfig.jwt.secret,
+    { expiresIn: '1h' }
+  );
+  const legacySession = await request(app).get('/api/auth/me').set(auth(legacyToken));
+  check('رمز صادر قبل إصدار الجلسة (بلا sv) ما زال يعمل — النشر لا يُخرج أحداً', legacySession.status === 200, {
+    status: legacySession.status
+  });
 
   const resetAudit = await db('audit_log').where({ action: 'user.password_reset', entity_id: String(resetUser.id) });
   check(

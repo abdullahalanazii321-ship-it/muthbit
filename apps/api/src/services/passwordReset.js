@@ -111,7 +111,15 @@ async function resetPassword({ token, password, ip }) {
     const user = await trx('users').where({ id: row.user_id }).first();
     if (!user || user.status !== 'active') throw invalid;
 
-    await trx('users').where({ id: user.id }).update({ password_hash: passwordHash, updated_at: trx.fn.now() });
+    // session_version + 1 يُبطل كل رمز دخول صادر قبل هذه اللحظة (middleware/auth.js).
+    // وأي مسار يغيّر كلمة المرور لاحقاً يجب أن يزيده بالطريقة نفسها.
+    await trx('users')
+      .where({ id: user.id })
+      .update({
+        password_hash: passwordHash,
+        session_version: trx.raw('session_version + 1'),
+        updated_at: trx.fn.now()
+      });
     await trx('password_reset_tokens').where({ id: row.id }).update({ used_at: trx.fn.now() });
     await trx('password_reset_tokens').where({ user_id: user.id }).whereNot({ id: row.id }).del();
 

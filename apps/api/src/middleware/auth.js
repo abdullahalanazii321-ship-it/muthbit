@@ -9,13 +9,17 @@ const { unauthorized, forbidden, badRequest, notFound } = require('../utils/erro
 const COMPANY_ROLES = ['company_owner', 'finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
 const SUPPLIER_ROLES = ['supplier_admin'];
 
+/** إصدار الجلسة في الرمز وفي الصف. الغائب 0: رموز ما قبل العمود، وصفوف أُدرجت بلا قيمة. */
+const sessionVersionOf = (value) => (Number.isInteger(value) ? value : 0);
+
 function signToken(user) {
   return jwt.sign(
     {
       sub: user.id,
       role: user.role,
       company_id: user.company_id || null,
-      supplier_id: user.supplier_id || null
+      supplier_id: user.supplier_id || null,
+      sv: sessionVersionOf(user.session_version)
     },
     env.jwt.secret,
     { expiresIn: env.jwt.expiresIn }
@@ -45,6 +49,11 @@ async function requireAuth(req, res, next) {
         throw unauthorized('انتهت الجلسة أو أن الرمز غير صالح.');
       }
       user = await db('users').where({ id: payload.sub }).first();
+      // تغيّرت كلمة المرور بعد صدور هذا الرمز: الجلسة انتهت. 401 لا 403 — فتمسح الواجهة الرمز
+      // وتعيد المستخدم إلى الدخول، والرسالة نفسها التي للرمز المنتهي فلا تقول لحامله ماذا جرى.
+      if (user && sessionVersionOf(payload.sv) !== sessionVersionOf(user.session_version)) {
+        throw unauthorized('انتهت الجلسة أو أن الرمز غير صالح.');
+      }
     }
 
     if (!user) throw unauthorized();

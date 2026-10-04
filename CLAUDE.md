@@ -7,7 +7,7 @@
 إن غمض شيء: قف واسأل. لا تفترض.
 
 ## المكدّس
-- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٤٣ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
+- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٤٥ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
 - `apps/web` — React + Vite + Tailwind. **مبنيّ بالكامل:** ثماني شاشات (الدخول · الطلبات · طلب جديد · تفاصيل الطلب · بوابة المورد · لوحة المنصة · الفريق · سجل التدقيق).
   **كلها تصلح للجوال**، ومعها إنشاء الحساب وصفحة التعريف — قيست عند 360 بكسل (القاعدة ١٠).
   وشاشتا «نسيت كلمة المرور» (`/forgot-password`) و«إعادة التعيين» (`/reset-password#token=…`) بإطار الدخول نفسه.
@@ -26,6 +26,8 @@
   الرموز: `bad_request` `unauthorized` `forbidden` `not_found` `conflict` `policy_blocked` `internal_error`.
   `policy_blocked` (٤٢٢) يعني أن السياسة منعت — وليس عطلاً. اعرض `details` معه.
 - `401` يعني انتهت الجلسة: امسح الرمز وأعد المستخدم لشاشة الدخول.
+  وتغيير كلمة المرور يُنهي كل جلسات صاحبها: `users.session_version` يُزاد، والرمز يحمل `sv`.
+  أي مسار جديد يغيّر كلمة المرور يجب أن يزيد `session_version` في المعاملة نفسها.
 
 ## المسارات الموجودة — لا تخترع غيرها
 عام بلا رمز: `POST /api/auth/register-company` · `POST /api/auth/login` · `POST /api/suppliers/register` · `GET /health`
@@ -119,7 +121,7 @@ GET    /api/audit
 npm install
 export SEED_PASSWORD='<كلمة تحقّق السياسة>'   # نفسها للبذر وللفحوص
 npm run api:migrate && npm run api:seed
-npm run api:test        # ١٤٣ فحصاً — يجب أن تمر كلها
+npm run api:test        # ١٤٥ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 
