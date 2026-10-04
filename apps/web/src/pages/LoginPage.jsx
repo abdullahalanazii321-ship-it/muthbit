@@ -124,6 +124,8 @@ export default function LoginPage() {
             value={password}
             onChange={handleChange}
             onAnimationStart={handleAutofill}
+            // ضغطة العين تفاعل يكشف ما عبّأه كروم، وإظهار الكلمة يعيد رسم الحقل؛ فتُقرأ القيمتان قبله وإلا مُسحتا.
+            onRevealToggle={syncFields}
             disabled={submitting}
           />
           {/* رابط مستقل لا داخل جملة: هدف لمسه ٤٤ بكسل (min-h-11). و -mt-3 يقرّبه من الحقل الذي يخصّه
