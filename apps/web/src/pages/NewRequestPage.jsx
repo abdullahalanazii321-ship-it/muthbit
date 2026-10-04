@@ -7,6 +7,8 @@ import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
 
+const FULL_ON_MOBILE = 'w-full md:w-auto';
+
 /** نموذج إنشاء طلب شراء. الخادم وحده يقرر السياسة؛ الشاشة تعرض قراره. */
 export default function NewRequestPage() {
   const navigate = useNavigate();
@@ -57,7 +59,8 @@ export default function NewRequestPage() {
   return (
     <div className="min-h-screen bg-ground">
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      {/* break-words موروثة: تكسر رسالة الخادم أو سبب السياسة الطويل بلا مسافة بدل أن يدفع الصفحة أفقياً. */}
+      <main className="mx-auto max-w-5xl break-words px-4 py-8">
         <h1 className="font-display text-2xl font-semibold text-ink">طلب شراء جديد</h1>
 
         <div className="mt-6 max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
@@ -122,11 +125,24 @@ export default function NewRequestPage() {
 
             {error && <Alert items={error.reasons}>{error.message}</Alert>}
 
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit" disabled={!canSubmit} loading={submitting} loadingText="جارٍ الإرسال…">
+            {/* تحت ٧٦٨ بكسل: زرّان بعرض الشاشة وبينهما ١٦ بكسل، فلا يقع «إلغاء» تحت إصبع قاصدٍ «إرسال».
+                فوقها كما كانا حرفياً: صفّ بعرض المحتوى وبينهما ١٢ بكسل. */}
+            <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:gap-3">
+              <Button
+                type="submit"
+                className={FULL_ON_MOBILE}
+                disabled={!canSubmit}
+                loading={submitting}
+                loadingText="جارٍ الإرسال…"
+              >
                 إرسال الطلب
               </Button>
-              <Button variant="secondary" onClick={() => navigate('/requests')} disabled={submitting}>
+              <Button
+                variant="secondary"
+                className={FULL_ON_MOBILE}
+                onClick={() => navigate('/requests')}
+                disabled={submitting}
+              >
                 إلغاء
               </Button>
             </div>
