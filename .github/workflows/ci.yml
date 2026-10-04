@@ -74,14 +74,15 @@ jobs:
       # ---------- النشر ----------
       # يقع بعد نجاح كل ما سبق (الخطوة لا تُنفَّذ إن سقطت خطوة قبلها)،
       # وعلى دفع إلى main وحده — لا على طلبات الدمج.
-      # وإن لم يُضبط السرّ بعد، تتخطّى الخطوة نفسها بهدوء ولا تُسقط CI.
+      # وإن لم يُضبط السرّ، تتخطّى الخطوة نفسها ولا تُسقط CI — لكن بتحذير ظاهر في ملخّص التشغيل لا بصمت.
       - name: نشر الخادم على Render
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "السرّ RENDER_API_DEPLOY_HOOK غير مضبوط — تخطّي نشر الخادم."
+            # ::warning:: يظهر في ملخّص التشغيل: ✓ الخطوة وحده لا يعني أن النشر وقع.
+            echo "::warning title=لم يُنشر الخادم::السرّ RENDER_API_DEPLOY_HOOK غير مضبوط — تخطّي نشر الخادم."
             exit 0
           fi
           curl --fail --silent --show-error --request POST "$HOOK" > /dev/null
@@ -93,7 +94,7 @@ jobs:
           HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK }}
         run: |
           if [ -z "$HOOK" ]; then
-            echo "السرّ RENDER_WEB_DEPLOY_HOOK غير مضبوط — تخطّي نشر الواجهة."
+            echo "::warning title=لم تُنشر الواجهة::السرّ RENDER_WEB_DEPLOY_HOOK غير مضبوط — تخطّي نشر الواجهة."
             exit 0
           fi
           curl --fail --silent --show-error --request POST "$HOOK" > /dev/null
