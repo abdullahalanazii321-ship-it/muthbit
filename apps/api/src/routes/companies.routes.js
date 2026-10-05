@@ -10,6 +10,10 @@ const { requireReason } = require('../utils/reason');
 const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const { badRequest, notFound, forbidden, conflict } = require('../utils/errors');
 const { JOIN_STATUSES, generateJoinCode } = require('../utils/joinCode');
+const { recordPlatformAccess } = require('../utils/accessLog');
+
+// صف الشركة كما يُرجَع لمسؤول المنصة: كل أعمدتها عدا رمز الانضمام — الرمز لمالك الشركة وحده من مساره.
+const COMPANY_COLUMNS = ['id', 'name', 'cr_number', 'vat_number', 'city', 'status', 'verification_source', 'verified_at', 'created_at', 'updated_at'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -35,6 +39,10 @@ router.get('/', requireRole('platform_admin'), async (req, res, next) => {
       query.where({ status });
     }
     const companies = await query.orderBy('created_at', 'desc');
+    await recordPlatformAccess(req, {
+      action: 'viewed.companies',
+      payload: { filters: { status: req.query.status ? String(req.query.status) : null }, count: companies.length }
+    });
     return res.json({ companies });
   } catch (err) {
     return next(err);
@@ -69,7 +77,17 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
           verified_at: parsed.data.status === 'active' ? trx.fn.now() : null,
           updated_at: trx.fn.now()
         })
-        .returning('*');
+        // لا returning('*'): الصف فيه رمز الانضمام، وهو مفتاح يسمح لحامله بطلب انضمام باسم الشركة.
+        .returning(COMPANY_COLUMNS);
+
+      // التوثيق يُقيَّد في سجل الوصول الداخلي، في المعاملة نفسها: إن فشل القيد لم يقع التوثيق.
+      await recordPlatformAccess(req, {
+        action: 'verified.company',
+        companyId: company.id,
+        entityType: 'company',
+        entityId: company.id,
+        payload: { from: company.status, to: parsed.data.status }
+      }, trx);
 
       // تفعيل الشركة يفعّل مالكها معه — لا معنى لشركة نشطة بلا من يدخل إليها.
       // أياً كانت حالته: بانتظار التفعيل (شركة جديدة) أو موقوفاً (شركة أُوقفت ثم عادت).
@@ -128,9 +146,9 @@ router.get('/:id/users', requireRole('company_owner', 'finance_manager', 'procur
       'company_id',
       platformCompanyId
     ).orderBy('created_at', 'asc');
-    await audit.recordPlatformView(req, {
+    await recordPlatformAccess(req, {
+      action: 'viewed.company_users',
       companyId: platformCompanyId,
-      action: 'platform.viewed_users',
       entityType: 'company',
       entityId: platformCompanyId,
       payload: { count: rows.length }

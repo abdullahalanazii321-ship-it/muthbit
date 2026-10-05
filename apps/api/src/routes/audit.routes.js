@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 const db = require('../db/knex');
-const audit = require('../utils/audit');
+const { recordPlatformAccess } = require('../utils/accessLog');
 const { requireAuth, requireRole, resolvePlatformCompany } = require('../middleware/auth');
 const { forbidden } = require('../utils/errors');
 
@@ -41,11 +41,10 @@ router.get('/', requireRole('company_owner', 'finance_manager', 'procurement_man
 
     const events = await query;
 
-    // قراءة سجل شركة تكتب صفاً في ذلك السجل نفسه. هذا مقصود لا خطأ: من يطّلع على سجلك يترك أثره فيه.
-    // يُكتب بعد القراءة، فلا يظهر في هذا الرد بل في القراءة التالية. لا «تصلحه».
-    await audit.recordPlatformView(req, {
+    // اطلاع المنصة على سجل شركة يُقيَّد في سجل الوصول الداخلي — لا في سجل الشركة. يُنتظر قبل الرد.
+    await recordPlatformAccess(req, {
+      action: 'viewed.company_audit',
       companyId: platformCompanyId,
-      action: 'platform.viewed_audit',
       entityType: 'company',
       entityId: platformCompanyId,
       payload: {

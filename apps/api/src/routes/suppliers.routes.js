@@ -7,6 +7,7 @@ const env = require('../config/env');
 const audit = require('../utils/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { requireReason } = require('../utils/reason');
+const { recordPlatformAccess } = require('../utils/accessLog');
 const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const { badRequest, notFound, conflict, forbidden } = require('../utils/errors');
 
@@ -199,6 +200,15 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
           .update({ status: 'withdrawn', updated_at: trx.fn.now() });
       }
 
+      // التوثيق يُقيَّد في سجل الوصول الداخلي أيضاً، في المعاملة نفسها.
+      await recordPlatformAccess(req, {
+        action: 'verified.supplier',
+        supplierId: supplier.id,
+        entityType: 'supplier',
+        entityId: supplier.id,
+        payload: { from: supplier.verification_status, to: parsed.data.status }
+      }, trx);
+
       await audit.record(trx, {
         actor: req.user,
         entityType: 'supplier',
@@ -238,6 +248,10 @@ router.get('/', async (req, res, next) => {
     if (req.query.status && isPlatform) query.where({ verification_status: String(req.query.status) });
 
     const suppliers = await query.orderBy('name', 'asc');
+    await recordPlatformAccess(req, {
+      action: 'viewed.suppliers',
+      payload: { filters: { status: req.query.status && isPlatform ? String(req.query.status) : null }, count: suppliers.length }
+    });
     return res.json({ suppliers });
   } catch (err) {
     return next(err);
@@ -264,6 +278,13 @@ router.get('/:id/categories', requireRole('platform_admin'), async (req, res, ne
       .select('categories.id', 'categories.slug', 'categories.name_ar', 'categories.name_en', 'supplier_categories.approved')
       .orderBy('categories.name_ar', 'asc');
 
+    await recordPlatformAccess(req, {
+      action: 'viewed.supplier_categories',
+      supplierId: supplier.id,
+      entityType: 'supplier',
+      entityId: supplier.id,
+      payload: { count: categories.length }
+    });
     return res.json({ categories, suggested_category: supplier.suggested_category });
   } catch (err) {
     return next(err);

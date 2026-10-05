@@ -7,7 +7,7 @@
 إن غمض شيء: قف واسأل. لا تفترض.
 
 ## المكدّس
-- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٨١ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
+- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٩٥ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
 - `apps/web` — React + Vite + Tailwind. **مبنيّ بالكامل:** ثماني شاشات (الدخول · الطلبات · طلب جديد · تفاصيل الطلب · بوابة المورد · لوحة المنصة · الفريق · سجل التدقيق).
   **كلها تصلح للجوال**، ومعها إنشاء الحساب وصفحة التعريف — قيست عند 360 بكسل (القاعدة ١٠).
   وشاشتا «نسيت كلمة المرور» (`/forgot-password`) و«إعادة التعيين» (`/reset-password#token=…`) بإطار الدخول نفسه.
@@ -65,6 +65,11 @@ POST   /api/companies/:id/join-code/rotate                  (company_owner)
 GET    /api/companies/:id/join-requests                     (company_owner)
 POST   /api/companies/:id/join-requests/:userId/approve     (company_owner) { role, per_request_ceiling }
 POST   /api/companies/:id/join-requests/:userId/reject      (company_owner) { reason }
+GET    /api/platform/access-log         ?company_id ?actor_user_id ?limit   (مالك المنصة، أو من منحه القراءة)
+GET    /api/platform/admins                                (مالك المنصة)
+POST   /api/platform/admins                                (مالك المنصة) { full_name, email, password }
+POST   /api/platform/admins/:userId/suspend                (مالك المنصة) { reason }
+PUT    /api/platform/admins/:userId/access-log-reader      (مالك المنصة) { allowed }
 POST   /api/requests
 GET    /api/requests            ?status=
 GET    /api/requests/:id
@@ -104,6 +109,7 @@ GET    /api/audit
 | الدور | يفعل |
 |---|---|
 | `platform_admin` | فريق المنصة: يوثّق الشركات والموردين. لا يُنشأ من داخل شركة |
+| ↳ مالك المنصة | `platform_admin` بعلم `users.is_platform_owner` (واحد، لا يضبطه مسار — هجرة وحدها). يقرأ سجل الوصول الداخلي ويمنح قراءته، وينشئ مسؤولي المنصة ويوقفهم |
 | `company_owner` | يدير المستخدمين والسقوف، ويعتمد |
 | `finance_manager` | يضبط سقوف المشترين، ويعتمد |
 | `procurement_manager` | يطلب ويعتمد ويصدر أمر الشراء |
@@ -137,7 +143,7 @@ GET    /api/audit
 npm install
 export SEED_PASSWORD='<كلمة تحقّق السياسة>'   # نفسها للبذر وللفحوص
 npm run api:migrate && npm run api:seed
-npm run api:test        # ١٨١ فحصاً — يجب أن تمر كلها
+npm run api:test        # ١٩٥ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 

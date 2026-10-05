@@ -27,14 +27,7 @@ async function record(trx, { actor, entityType, entityId, action, payload, ip, c
   });
 }
 
-/**
- * اطلاع مسؤول المنصة على بيانات شركة: يُقيَّد في سجل تلك الشركة نفسها (companyId)، فتراه كما ترى أي حدث.
- * لغيره لا شيء — قراءة المرء بيانات شركته حدث عادي، وتقييدها ضجيج بلا معنى.
- * null لا trx: قراءة لا معاملة لها. ويُنتظر قبل الرد، فلا تخرج بيانات لم يُقيَّد الاطلاع عليها.
- */
-async function recordPlatformView(req, { companyId, action, entityType, entityId, payload }) {
-  if (!req.user || req.user.role !== 'platform_admin') return;
-  await record(null, { actor: req.user, companyId, entityType, entityId, action, payload, ip: req.ip });
-}
+// اطلاع مسؤول المنصة لم يعد يُكتب هنا (كان platform.viewed_* في سجل الشركة نفسها):
+// يُقيَّد في سجل الوصول الداخلي وحده — utils/accessLog.js. والقيود القديمة باقية في سجلات الشركات كما هي.
 
-module.exports = { record, recordPlatformView };
+module.exports = { record };

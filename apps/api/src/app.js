@@ -25,6 +25,7 @@ const requestsRoutes = require('./routes/requests.routes');
 const offersRoutes = require('./routes/offers.routes');
 const auditRoutes = require('./routes/audit.routes');
 const categoriesRoutes = require('./routes/categories.routes');
+const platformRoutes = require('./routes/platform.routes');
 
 function createApp() {
   const app = express();
@@ -82,6 +83,7 @@ function createApp() {
   app.use('/api/offers', offersRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/categories', categoriesRoutes);
+  app.use('/api/platform', platformRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

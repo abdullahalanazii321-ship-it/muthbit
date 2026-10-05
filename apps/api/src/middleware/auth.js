@@ -80,7 +80,10 @@ async function requireAuth(req, res, next) {
       email: user.email,
       fullName: user.full_name,
       companyId: user.company_id || null,
-      supplierId: user.supplier_id || null
+      supplierId: user.supplier_id || null,
+      // مالك المنصة وصلاحية قراءة سجل الوصول — للمسؤول وحده بقيد في القاعدة (users_platform_flags_scope).
+      isPlatformOwner: user.is_platform_owner === true,
+      canReadAccessLog: user.can_read_access_log === true
     };
     return next();
   } catch (err) {
@@ -122,7 +125,7 @@ function requireRole(...allowed) {
  */
 function scopeToCompany(query, user, column = 'company_id', platformCompanyId = null) {
   // مسؤول المنصة لا يقرأ كل الشركات دفعة واحدة: يمرّر المسار الشركة التي سمّاها صراحةً
-  // (resolvePlatformCompany)، وإلا رُفض. وتقييد اطلاعه في سجل تلك الشركة على المسار (audit.recordPlatformView).
+  // (resolvePlatformCompany)، وإلا رُفض. واطلاعه يُقيَّد في سجل الوصول الداخلي على المسار (utils/accessLog.js).
   if (user.role === 'platform_admin') {
     if (!platformCompanyId) throw forbidden();
     return query.where(column, platformCompanyId);

@@ -87,7 +87,10 @@ exports.seed = async function seed(knex) {
     password_hash: hash,
     full_name: 'مسؤول منصة مثبت',
     role: 'platform_admin',
-    status: 'active'
+    status: 'active',
+    // مالك المنصة كما في الإنتاج (هجرة platform_owner_access_log): قاعدة التطوير بشكل الإنتاج لا بحيلة في الفحوص.
+    // إدراج لا تعديل — مشغّل العلم يحرس تغييره بعد الإنشاء، والفهرس الفريد يمنع مالكاً ثانياً.
+    is_platform_owner: true
   });
 
   // ---------- الشركة الأولى ----------

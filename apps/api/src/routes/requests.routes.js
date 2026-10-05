@@ -5,6 +5,7 @@ const db = require('../db/knex');
 const audit = require('../utils/audit');
 const policy = require('../services/policy');
 const { nextReference } = require('../utils/reference');
+const { recordPlatformAccess } = require('../utils/accessLog');
 const { requireAuth, requireRole, scopeToCompany, assertOwnership, resolvePlatformCompany } = require('../middleware/auth');
 const { requireReason } = require('../utils/reason');
 const { badRequest, notFound, forbidden, conflict, policyBlocked } = require('../utils/errors');
@@ -113,9 +114,9 @@ router.get('/', async (req, res, next) => {
     if (req.query.status) query = query.where({ status: String(req.query.status) });
 
     const requests = await query.orderBy('created_at', 'desc').limit(200);
-    await audit.recordPlatformView(req, {
+    await recordPlatformAccess(req, {
+      action: 'viewed.company_requests',
       companyId: platformCompanyId,
-      action: 'platform.viewed_requests',
       entityType: 'company',
       entityId: platformCompanyId,
       payload: { filters: { status: req.query.status ? String(req.query.status) : null }, count: requests.length }
@@ -162,10 +163,10 @@ router.get('/:id', async (req, res, next) => {
 
     const purchaseOrder = await db('purchase_orders').where({ request_id: request.id }).first();
 
-    // الشركة معروفة من الصف نفسه، فلا معامل — لكن اطلاع المنصة يُقيَّد في سجلها.
-    await audit.recordPlatformView(req, {
+    // الشركة معروفة من الصف نفسه، فلا معامل — واطلاع المنصة يُقيَّد في سجل الوصول الداخلي لا في سجلها.
+    await recordPlatformAccess(req, {
+      action: 'viewed.company_request',
       companyId: request.company_id,
-      action: 'platform.viewed_request',
       entityType: 'request',
       entityId: request.id,
       payload: { reference: request.reference }

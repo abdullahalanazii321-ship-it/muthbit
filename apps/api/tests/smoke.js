@@ -390,29 +390,33 @@ async function run() {
   const platformNoCompany = await request(app).get('/api/requests').set(auth(platform.token));
   check('المنصة لا تقرأ الطلبات دون تسمية الشركة', platformNoCompany.status === 400, platformNoCompany.body);
 
+  // تغيّر العقد بطلب المالك: اطلاع المنصة يُقيَّد في سجل الوصول الداخلي (platform_access_log) وحده،
+  // ولا يُكتب منه شيء في سجل الشركة. القيود القديمة في سجلات الشركات باقية كما هي.
+  const platformEventsBefore = (await platformEventsSeenByOwner()).length;
+  const platformAccess = (where) =>
+    db('platform_access_log').where({ actor_user_id: platform.user.id, ...where }).orderBy('id', 'desc').first();
+
   const platformList = await request(app)
     .get(`/api/requests?company_id=${owner.user.company_id}`)
     .set(auth(platform.token));
   const afterPlatformList = await platformEventsSeenByOwner();
+  const listAccess = await platformAccess({ action: 'viewed.company_requests', company_id: owner.user.company_id });
   check(
-    'اطلاع المنصة على طلبات شركة يُقيَّد في سجلها',
-    platformList.status === 200 &&
-      afterPlatformList.some((e) => e.action === 'platform.viewed_requests' && e.actor_role === 'platform_admin'),
+    'اطلاع المنصة على طلبات شركة يُقيَّد في سجل الوصول الداخلي لا في سجل الشركة',
+    platformList.status === 200 && Boolean(listAccess) && afterPlatformList.length === platformEventsBefore,
     { status: platformList.status, events: afterPlatformList.map((e) => e.action) }
   );
 
   const platformOne = await request(app).get(`/api/requests/${requestId}`).set(auth(platform.token));
   const afterPlatformOne = await platformEventsSeenByOwner();
+  const oneAccess = await platformAccess({ action: 'viewed.company_request', entity_id: requestId, company_id: owner.user.company_id });
   check(
-    'اطلاع المنصة على طلب بعينه يُقيَّد ومعه مرجعه',
+    'اطلاع المنصة على طلب بعينه يُقيَّد في سجل الوصول ومعه مرجعه، ولا شيء منه في سجل الشركة',
     platformOne.status === 200 &&
-      afterPlatformOne.some(
-        (e) =>
-          e.action === 'platform.viewed_request' &&
-          e.entity_id === requestId &&
-          e.payload &&
-          e.payload.reference === created.body.request.reference
-      ),
+      Boolean(oneAccess) &&
+      oneAccess.payload &&
+      oneAccess.payload.reference === created.body.request.reference &&
+      afterPlatformOne.length === platformEventsBefore,
     { status: platformOne.status }
   );
 
@@ -2127,6 +2131,215 @@ async function run() {
     );
   } finally {
     setLimitsEnabledForTests(false);
+  }
+
+  section('٢٧ — مالك المنصة وسجل الوصول الداخلي');
+  // كتلة مستقلة: أسماء هذا القسم لا تصطدم بأسماء الأقسام السابقة في run().
+  {
+
+  // مالك المنصة حساب البذور نفسه (admin@platform-demo.sa) بعلم is_platform_owner — كما في الإنتاج.
+  const ownerP = await login('admin@platform-demo.sa');
+  const ownerC = await login('admin@owner-demo.sa');
+  const accessStamp = Date.now();
+  const platformViewedBefore = Number((await db('audit_log').where('action', 'like', 'platform.viewed%').count({ n: '*' }).first()).n);
+  const accessRow = (where) => db('platform_access_log').where(where).orderBy('id', 'desc').first();
+  const dbError = async (fn) => {
+    try {
+      await fn();
+      return null;
+    } catch (err) {
+      return err.code || 'error';
+    }
+  };
+
+  const owners = await db('users').where({ is_platform_owner: true }).select('id');
+  const meOwner = await request(app).get('/api/auth/me').set(auth(ownerP.token));
+  check(
+    'مالك المنصة واحد، وهو حساب مسؤول المنصة في البذور',
+    owners.length === 1 && owners[0].id === ownerP.user.id && meOwner.body.user.isPlatformOwner === true,
+    { owners: owners.length }
+  );
+
+  // ── إنشاء مسؤول منصة: للمالك وحده، ولا يُنشأ مالكاً ولا قارئاً ولو طُلب ──
+  const adminEmail = `platform-admin-${accessStamp}@platform-demo.sa`;
+  const ADMIN_PASSWORD = 'Admin-Access-2026!';
+  const createdAdmin = await request(app)
+    .post('/api/platform/admins')
+    .set(auth(ownerP.token))
+    .send({ full_name: 'مسؤول دعم', email: adminEmail, password: ADMIN_PASSWORD, is_platform_owner: true, can_read_access_log: true });
+  const adminRow = await db('users').where({ email: adminEmail }).first();
+  check(
+    'المالك ينشئ مسؤول منصة — بلا علم المالك ولا صلاحية القراءة ولو أُرسلا',
+    createdAdmin.status === 201 &&
+      adminRow &&
+      adminRow.role === 'platform_admin' &&
+      adminRow.is_platform_owner === false &&
+      adminRow.can_read_access_log === false &&
+      Boolean(await accessRow({ action: 'created.platform_admin', target_user_id: adminRow.id, actor_user_id: ownerP.user.id })),
+    createdAdmin.body
+  );
+  const adminP = await login(adminEmail).catch(() => null);
+  const adminLogin = adminP || (await request(app).post('/api/auth/login').send({ email: adminEmail, password: ADMIN_PASSWORD })).body;
+
+  // ── مسؤول المنصة لا يقرأ السجل ولا يمنح ولا ينشئ ولا يوقف ──
+  const asAdmin = (method, path, body) => {
+    const call = request(app)[method](path).set(auth(adminLogin.token));
+    return body ? call.send(body) : call;
+  };
+  const adminAttempts = await Promise.all([
+    asAdmin('get', '/api/platform/access-log'),
+    asAdmin('put', `/api/platform/admins/${adminRow.id}/access-log-reader`, { allowed: true }),
+    asAdmin('put', `/api/platform/admins/${ownerP.user.id}/access-log-reader`, { allowed: true }),
+    asAdmin('get', '/api/platform/admins'),
+    asAdmin('post', '/api/platform/admins', { full_name: 'مسؤول آخر', email: `x-${accessStamp}@platform-demo.sa`, password: ADMIN_PASSWORD }),
+    asAdmin('post', `/api/platform/admins/${ownerP.user.id}/suspend`, { reason: 'محاولة إيقاف المالك' })
+  ]);
+  check(
+    'مسؤول المنصة لا يقرأ سجل الوصول ولا يمنح الصلاحية ولا ينشئ مسؤولاً ولا يوقف أحداً',
+    adminAttempts.every((r) => r.status === 403) &&
+      (await db('users').where({ id: adminRow.id }).first()).can_read_access_log === false,
+    adminAttempts.map((r) => r.status)
+  );
+
+  // ── لا رفع لمستوى المالك: لا مسار، والقاعدة نفسها ترفض تغيير العلم ──
+  const promoteAdmin = await dbError(() => db('users').where({ id: adminRow.id }).update({ is_platform_owner: true }));
+  const demoteOwner = await dbError(() => db('users').where({ id: ownerP.user.id }).update({ is_platform_owner: false }));
+  check(
+    'لا أحد يرفع نفسه أو غيره إلى مالك المنصة — ولا تعديل مباشر في القاعدة خارج هجرة',
+    promoteAdmin === 'P0001' && demoteOwner === 'P0001' && (await db('users').where({ is_platform_owner: true }).count({ n: '*' }).first()).n == 1,
+    { promoteAdmin, demoteOwner }
+  );
+
+  // ── اطلاع من لوحة المنصة يُقيَّد في سجل الوصول ──
+  const adminCompanies = await asAdmin('get', '/api/companies');
+  const adminRequests = await asAdmin('get', `/api/requests?company_id=${ownerC.user.company_id}`);
+  check(
+    'اطلاع مسؤول المنصة على الشركات وطلبات شركة يُقيَّد في سجل الوصول',
+    adminCompanies.status === 200 &&
+      adminRequests.status === 200 &&
+      Boolean(await accessRow({ action: 'viewed.companies', actor_user_id: adminRow.id })) &&
+      Boolean(await accessRow({ action: 'viewed.company_requests', actor_user_id: adminRow.id, company_id: ownerC.user.company_id })),
+    { companies: adminCompanies.status, requests: adminRequests.status }
+  );
+
+  // ── التوثيق صار يُقيَّد، ورمز الانضمام خارج الرد ──
+  const verifyCompany = await request(app)
+    .patch(`/api/companies/${ownerC.user.company_id}/verification`)
+    .set(auth(ownerP.token))
+    .send({ status: 'active' });
+  const supplierRowForVerify = await db('suppliers').where({ verification_status: 'verified' }).first();
+  const verifySupplier = await request(app)
+    .patch(`/api/suppliers/${supplierRowForVerify.id}/verification`)
+    .set(auth(ownerP.token))
+    .send({ status: 'verified' });
+  check(
+    'توثيق الشركة والمورد يكتب قيداً في سجل الوصول',
+    verifyCompany.status === 200 &&
+      verifySupplier.status === 200 &&
+      Boolean(await accessRow({ action: 'verified.company', company_id: ownerC.user.company_id, actor_user_id: ownerP.user.id })) &&
+      Boolean(await accessRow({ action: 'verified.supplier', supplier_id: supplierRowForVerify.id, actor_user_id: ownerP.user.id })),
+    { company: verifyCompany.status, supplier: verifySupplier.status }
+  );
+  check(
+    'رد التوثيق بلا رمز انضمام — الرمز لمالك الشركة وحده',
+    verifyCompany.body.company &&
+      !('join_code' in verifyCompany.body.company) &&
+      !('join_code_updated_at' in verifyCompany.body.company) &&
+      (adminCompanies.body.companies || []).every((c) => !('join_code' in c)),
+    verifyCompany.body.company && Object.keys(verifyCompany.body.company)
+  );
+
+  // ── قراءة السجل تُقيَّد فيه ──
+  const accessLogRead = await request(app).get('/api/platform/access-log?limit=50').set(auth(ownerP.token));
+  const readRow = await accessRow({ action: 'viewed.access_log', actor_user_id: ownerP.user.id });
+  const accessLogReadAgain = await request(app).get('/api/platform/access-log?limit=50').set(auth(ownerP.token));
+  check(
+    'قراءة سجل الوصول تكتب قيداً فيه، ويظهر في القراءة التالية',
+    accessLogRead.status === 200 &&
+      Array.isArray(accessLogRead.body.entries) &&
+      readRow &&
+      Number(readRow.payload.count) === accessLogRead.body.entries.length &&
+      accessLogReadAgain.body.entries.some((e) => e.id === readRow.id && e.action === 'viewed.access_log'),
+    { status: accessLogRead.status }
+  );
+
+  // ── المنح والسحب ──
+  const grant = await request(app).put(`/api/platform/admins/${adminRow.id}/access-log-reader`).set(auth(ownerP.token)).send({ allowed: true });
+  const adminReads = await asAdmin('get', '/api/platform/access-log');
+  const adminReadRow = await accessRow({ action: 'viewed.access_log', actor_user_id: adminRow.id });
+  const revoke = await request(app).put(`/api/platform/admins/${adminRow.id}/access-log-reader`).set(auth(ownerP.token)).send({ allowed: false });
+  const adminAfterRevoke = await asAdmin('get', '/api/platform/access-log');
+  const ownerSelfGrant = await request(app).put(`/api/platform/admins/${ownerP.user.id}/access-log-reader`).set(auth(ownerP.token)).send({ allowed: false });
+  check(
+    'المالك يمنح القراءة ويسحبها، والممنوح يقرأ وتُقيَّد قراءته، وبعد السحب يُمنع',
+    grant.status === 200 &&
+      adminReads.status === 200 &&
+      Boolean(adminReadRow) &&
+      revoke.status === 200 &&
+      adminAfterRevoke.status === 403 &&
+      ownerSelfGrant.status === 400 &&
+      Boolean(await accessRow({ action: 'granted.access_log', target_user_id: adminRow.id, actor_user_id: ownerP.user.id })) &&
+      Boolean(await accessRow({ action: 'revoked.access_log', target_user_id: adminRow.id, actor_user_id: ownerP.user.id })),
+    { grant: grant.status, read: adminReads.status, revoke: revoke.status, after: adminAfterRevoke.status, self: ownerSelfGrant.status }
+  );
+
+  // ── إيقاف مسؤول منصة ──
+  const ownerSelfSuspend = await request(app).post(`/api/platform/admins/${ownerP.user.id}/suspend`).set(auth(ownerP.token)).send({ reason: 'إيقاف النفس' });
+  const suspendNoReason = await request(app).post(`/api/platform/admins/${adminRow.id}/suspend`).set(auth(ownerP.token)).send({});
+  const suspendAdmin = await request(app).post(`/api/platform/admins/${adminRow.id}/suspend`).set(auth(ownerP.token)).send({ reason: 'انتهى عقد الدعم' });
+  const suspendedLogin = await request(app).post('/api/auth/login').send({ email: adminEmail, password: ADMIN_PASSWORD });
+  check(
+    'المالك يوقف مسؤولاً بسبب مكتوب، ولا يوقف نفسه، والموقوف لا يدخل',
+    ownerSelfSuspend.status === 400 &&
+      suspendNoReason.status === 400 &&
+      suspendNoReason.body.error.message === 'الإيقاف يحتاج سبباً مكتوباً.' &&
+      suspendAdmin.status === 200 &&
+      suspendedLogin.status === 401 &&
+      Boolean(await accessRow({ action: 'suspended.platform_admin', target_user_id: adminRow.id })),
+    { self: ownerSelfSuspend.status, noReason: suspendNoReason.status, suspend: suspendAdmin.status, login: suspendedLogin.status }
+  );
+
+  // ── السجل لا يُعدَّل ولا يُحذف ولا يُفرَّغ — ولا مسار لذلك ولو للمالك ──
+  const anyRow = await accessRow({ actor_user_id: ownerP.user.id });
+  const updateLog = await dbError(() => db('platform_access_log').where({ id: anyRow.id }).update({ action: 'tampered' }));
+  const deleteLog = await dbError(() => db('platform_access_log').where({ id: anyRow.id }).del());
+  const truncateLog = await dbError(() => db.raw('TRUNCATE platform_access_log'));
+  const truncateAudit = await dbError(() => db.raw('TRUNCATE audit_log'));
+  const ownerDeleteRoute = await request(app).delete('/api/platform/access-log').set(auth(ownerP.token));
+  const ownerPatchRoute = await request(app).patch(`/api/platform/access-log/${anyRow.id}`).set(auth(ownerP.token)).send({ action: 'x' });
+  check(
+    'سجل الوصول لا يُعدَّل ولا يُحذف ولا يُفرَّغ — في القاعدة نفسها، ولا مسار لذلك ولو بحساب المالك',
+    updateLog === 'P0001' &&
+      deleteLog === 'P0001' &&
+      truncateLog === 'P0001' &&
+      ownerDeleteRoute.status === 404 &&
+      ownerPatchRoute.status === 404 &&
+      (await db('platform_access_log').where({ id: anyRow.id }).first()).action === anyRow.action,
+    { updateLog, deleteLog, truncateLog, del: ownerDeleteRoute.status, patch: ownerPatchRoute.status }
+  );
+  check('سجل تدقيق الشركات لا يُفرَّغ بـ TRUNCATE بعد اليوم', truncateAudit === 'P0001', { truncateAudit });
+
+  // ── لا قيود platform.viewed_* جديدة في سجلات الشركات، ولا سر في سجل الوصول ──
+  const platformViewedAfter = Number((await db('audit_log').where('action', 'like', 'platform.viewed%').count({ n: '*' }).first()).n);
+  const joinCodes = await db('companies').pluck('join_code');
+  const leakedCodes = await db('platform_access_log')
+    .where((b) => {
+      for (const code of joinCodes) b.orWhereRaw('payload::text LIKE ?', [`%${code}%`]);
+    })
+    .count({ n: '*' })
+    .first();
+  const leakedPassword = await db('platform_access_log').whereRaw('payload::text LIKE ?', [`%${ADMIN_PASSWORD}%`]).count({ n: '*' }).first();
+  check(
+    'لا قيود platform.viewed_* جديدة في سجلات الشركات بعد كل هذا الاطلاع',
+    platformViewedAfter === platformViewedBefore,
+    { before: platformViewedBefore, after: platformViewedAfter }
+  );
+  check(
+    'سجل الوصول بلا رمز انضمام ولا كلمة مرور',
+    Number(leakedCodes.n) === 0 && Number(leakedPassword.n) === 0,
+    { codes: leakedCodes.n, password: leakedPassword.n }
+  );
+
   }
 
   console.log(`\n${'='.repeat(58)}`);
