@@ -113,10 +113,20 @@ exports.up = async function up(knex) {
     END;
     $$ LANGUAGE plpgsql
   `);
+  // «إن لم يوجد»: تراجع هذه الهجرة لا يُسقط هذا المشغّل عمداً (لا تراجع يعطّل حارس السجل)،
+  // فإعادة الصعود بعد تراجع خطوة واحدة تجده قائماً. في الإنتاج لا يوجد قبل أول صعود، فالمسار نفسه.
   await knex.raw(`
-    CREATE TRIGGER audit_log_no_truncate
-    BEFORE TRUNCATE ON audit_log
-    FOR EACH STATEMENT EXECUTE FUNCTION audit_log_no_truncate()
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'audit_log_no_truncate' AND tgrelid = 'audit_log'::regclass
+      ) THEN
+        CREATE TRIGGER audit_log_no_truncate
+        BEFORE TRUNCATE ON audit_log
+        FOR EACH STATEMENT EXECUTE FUNCTION audit_log_no_truncate();
+      END IF;
+    END
+    $$
   `);
 };
 
