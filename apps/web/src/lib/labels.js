@@ -71,6 +71,7 @@ export const accessActionLabels = {
   'viewed.access_log': 'فتح سجل الوصول',
   'created.platform_admin': 'إنشاء مسؤول منصة',
   'suspended.platform_admin': 'إيقاف مسؤول منصة',
+  'activated.platform_admin': 'إعادة تفعيل مسؤول منصة',
   'granted.access_log': 'منح قراءة سجل الوصول',
   'revoked.access_log': 'سحب قراءة سجل الوصول'
 };

@@ -19,14 +19,15 @@ const SUSPENDED = 'suspended';
 const COLUMNS = ['الاسم', 'البريد', 'الحالة', 'قراءة سجل الوصول', 'إجراءات'];
 
 /**
- * مسؤولو المنصة — لمالك المنصة (canManagePlatform): إنشاء حساب، ومنح قراءة سجل الوصول وسحبها، والإيقاف بسبب.
+ * مسؤولو المنصة — لمالك المنصة (canManagePlatform): إنشاء حساب، ومنح قراءة سجل الوصول وسحبها،
+ * والإيقاف وإعادة التفعيل بسبب مكتوب — الزران في الخانة نفسها: الإيقاف للنشط، وإعادة التفعيل للموقوف.
  * حساب المالك مميَّز وبلا أي إجراء — لا زر معطّل، بل لا زر أصلاً: الخادم يرفض إيقافه وسحب قراءته على كل حال.
  * بعد كل إجراء تُعاد القائمة من الخادم — لا تحديث محلي بالتخمين.
  */
 export default function PlatformAdminsPage() {
   const admins = useResource('/api/platform/admins', isAdminsResponse);
   const list = admins.status === 'ready' ? admins.data.admins : [];
-  // لوحة واحدة في كل مرة: { kind: 'new' } · { kind: 'grant', admin } · { kind: 'suspend', admin }
+  // لوحة واحدة في كل مرة: { kind: 'new' } · { kind: 'grant', admin } · { kind: 'suspend', admin } · { kind: 'activate', admin }
   const [panel, setPanel] = useState(null);
   const [notice, setNotice] = useState(null);
   // سحب القراءة بلا تأكيد (يسلب ولا يمنح شيئاً يُخشى منه)، فحالته هنا: الصف الجاري ورسالة فشله.
@@ -73,7 +74,8 @@ export default function PlatformAdminsPage() {
     busy: admins.refreshing,
     revokingId,
     onToggleReader: toggleReader,
-    onSuspend: (admin) => open({ kind: 'suspend', admin })
+    onSuspend: (admin) => open({ kind: 'suspend', admin }),
+    onActivate: (admin) => open({ kind: 'activate', admin })
   };
 
   return (
@@ -104,6 +106,11 @@ export default function PlatformAdminsPage() {
         {panel?.kind === 'suspend' && (
           <PanelCard key={`suspend-${panel.admin.id}`} title={`إيقاف ${panel.admin.full_name}`}>
             <SuspendAdmin admin={panel.admin} onSuspended={finish} onCancel={() => setPanel(null)} />
+          </PanelCard>
+        )}
+        {panel?.kind === 'activate' && (
+          <PanelCard key={`activate-${panel.admin.id}`} title={`إعادة تفعيل ${panel.admin.full_name}`}>
+            <ActivateAdmin admin={panel.admin} onActivated={finish} onCancel={() => setPanel(null)} />
           </PanelCard>
         )}
 
@@ -176,19 +183,40 @@ function ReaderCell({ admin, busy, revokingId, onToggleReader }) {
   );
 }
 
-/** الإيقاف لغير المالك وللنشط وحده. المالك بلا زر أصلاً. */
+/** الإيقاف لغير المالك وللنشط وحده، وإعادة التفعيل للموقوف وحده. المالك بلا زر أصلاً. */
 const canSuspend = (admin) => !admin.is_platform_owner && admin.status !== SUSPENDED;
+const canActivate = (admin) => !admin.is_platform_owner && admin.status === SUSPENDED;
+
+/** زر الصف: «إيقاف» للنشط أو «إعادة تفعيل» للموقوف — لا يجتمعان، فمكانهما واحد. */
+function RowAction({ admin, busy, onSuspend, onActivate, className = '' }) {
+  if (canSuspend(admin)) {
+    return (
+      <Button variant="secondary" className={className} onClick={() => onSuspend(admin)} disabled={busy}>
+        إيقاف
+      </Button>
+    );
+  }
+  if (canActivate(admin)) {
+    return (
+      <Button variant="secondary" className={className} onClick={() => onActivate(admin)} disabled={busy}>
+        إعادة تفعيل
+      </Button>
+    );
+  }
+  return null;
+}
 
 function NameCell({ admin }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      <span>{admin.full_name}</span>
+    // max-w-full و min-w-0: عنصر flex لا ينكمش دون أطول كلمة فيه، فاسم طويل بلا مسافة كان يمدّ الصفحة إلى ٥١٥ بكسل على ٣٦٠.
+    <span className="inline-flex max-w-full flex-wrap items-center gap-2">
+      <span className="min-w-0 max-w-full break-words">{admin.full_name}</span>
       {admin.is_platform_owner && <Badge tone="seal">مالك المنصة</Badge>}
     </span>
   );
 }
 
-function AdminsCards({ loading = false, admins = [], busy, revokingId, onToggleReader, onSuspend }) {
+function AdminsCards({ loading = false, admins = [], busy, revokingId, onToggleReader, onSuspend, onActivate }) {
   if (loading) return <RecordCardsSkeleton lines={3} />;
   return (
     <RecordCards label="مسؤولو المنصة">
@@ -198,10 +226,8 @@ function AdminsCards({ loading = false, admins = [], busy, revokingId, onToggleR
           title={<NameCell admin={admin} />}
           badge={<StatusBadgeFor status={admin.status} />}
           actions={
-            canSuspend(admin) ? (
-              <Button variant="secondary" className="w-full" onClick={() => onSuspend(admin)} disabled={busy}>
-                إيقاف
-              </Button>
+            canSuspend(admin) || canActivate(admin) ? (
+              <RowAction admin={admin} busy={busy} onSuspend={onSuspend} onActivate={onActivate} className="w-full" />
             ) : null
           }
         >
@@ -217,7 +243,7 @@ function AdminsCards({ loading = false, admins = [], busy, revokingId, onToggleR
   );
 }
 
-function AdminsTable({ loading = false, admins = [], busy, revokingId, onToggleReader, onSuspend }) {
+function AdminsTable({ loading = false, admins = [], busy, revokingId, onToggleReader, onSuspend, onActivate }) {
   const cell = 'px-4 py-3';
   return (
     <div className="rounded border border-line bg-surface">
@@ -258,11 +284,7 @@ function AdminsTable({ loading = false, admins = [], busy, revokingId, onToggleR
                     <ReaderCell admin={admin} busy={busy} revokingId={revokingId} onToggleReader={onToggleReader} />
                   </td>
                   <td className={cell}>
-                    {canSuspend(admin) && (
-                      <Button variant="secondary" onClick={() => onSuspend(admin)} disabled={busy}>
-                        إيقاف
-                      </Button>
-                    )}
+                    <RowAction admin={admin} busy={busy} onSuspend={onSuspend} onActivate={onActivate} className="whitespace-nowrap" />
                   </td>
                 </tr>
               ))}
@@ -412,7 +434,7 @@ function SuspendAdmin({ admin, onSuspended, onCancel }) {
   return (
     <div className="flex max-w-measure flex-col gap-5">
       <Alert>
-        <p>لن يستطيع {admin.full_name} الدخول بعد التأكيد. ولا يوجد اليوم مسار لإعادة تفعيله.</p>
+        <p>لن يستطيع {admin.full_name} الدخول بعد التأكيد. وتستطيع إعادة تفعيله لاحقاً بسبب مكتوب.</p>
       </Alert>
       <ReasonField id={reasonId} label="سبب الإيقاف" value={reason} onChange={(event) => setReason(event.target.value)} disabled={sending} />
 
@@ -421,6 +443,60 @@ function SuspendAdmin({ admin, onSuspended, onCancel }) {
       <div className="flex flex-wrap gap-3">
         <Button variant="signal" onClick={confirm} disabled={!reasonReady(reason)} loading={sending} loadingText="جارٍ الإيقاف…">
           تأكيد الإيقاف
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={sending}>
+          تراجع
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * إعادة تفعيل مسؤول موقوف بسبب مكتوب — بقاعدة الإيقاف نفسها، ورسالة الخادم كما هي.
+ * ما يحدث معها يُقال قبل التأكيد: تنتهي جلساته القديمة، وتُسحب قراءة سجل الوصول إن كانت ممنوحة.
+ */
+function ActivateAdmin({ admin, onActivated, onCancel }) {
+  const reasonId = useId();
+  const [reason, setReason] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function confirm() {
+    if (sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`/api/platform/admins/${encodeURIComponent(admin.id)}/activate`, {
+        method: 'POST',
+        body: { reason: reason.trim() }
+      });
+      onActivated(data?.message ?? null);
+    } catch (err) {
+      // 401: api.js أنهى الجلسة وحوّل إلى /login.
+      if (err?.status === 401) return;
+      setError(errorMessage(err));
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="flex max-w-measure flex-col gap-5">
+      <Alert>
+        <p>سيستطيع {admin.full_name} الدخول من جديد بعد التأكيد، وتنتهي كل جلساته السابقة فيدخل بكلمة مروره.</p>
+        <p className="mt-2">
+          {admin.can_read_access_log
+            ? 'وتُسحب منه قراءة سجل الوصول — تمنحها من جديد إن شئت.'
+            : 'ويعود بلا قراءة سجل الوصول — تمنحها لاحقاً إن شئت.'}
+        </p>
+      </Alert>
+      <ReasonField id={reasonId} label="سبب إعادة التفعيل" value={reason} onChange={(event) => setReason(event.target.value)} disabled={sending} />
+
+      {error && <Alert>{error}</Alert>}
+
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={confirm} disabled={!reasonReady(reason)} loading={sending} loadingText="جارٍ التفعيل…">
+          تأكيد إعادة التفعيل
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={sending}>
           تراجع
