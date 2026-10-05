@@ -92,7 +92,7 @@ export default function SupplierPortalPage() {
     <AppShell title="بوابة المورد">
       {/* break-words موروثة، فسطر واحد يكسر كل نص طويل في الشاشة: الصنف، والمواصفات،
           ورسائل الخادم، ورقم المرجع. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8">
+      <main className="break-words px-4 py-8">
         <Tabs active={activeTab} onChange={changeTab} />
 
         <section role="tabpanel" id={`panel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="mt-6">

@@ -81,7 +81,7 @@ export default function PlatformAdminsPage() {
   return (
     <AppShell title="مسؤولو المنصة" action={<Button onClick={() => open({ kind: 'new' })}>مسؤول منصة جديد</Button>}>
       {/* break-words موروثة: اسم أو بريد طويل بلا مسافة ينكسر ولا يمدّ الصفحة. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8">
+      <main className="break-words px-4 py-8">
         {notice && (
           <div className="mb-6">
             <Alert tone="seal">{notice}</Alert>

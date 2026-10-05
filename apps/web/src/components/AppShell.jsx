@@ -109,12 +109,13 @@ export default function AppShell({ title, titleAs: TitleTag = 'h1', action, chil
       {/* ───── المحتوى: شريط عنوان رفيع ثم الشاشة ───── */}
       <div className="md:ms-sidebar">
         <div className="border-b border-line bg-surface">
-          <div className="mx-auto flex min-h-14 max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
+          <div className="mx-auto flex min-h-14 max-w-content flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2">
             <TitleTag className="min-w-0 break-words font-display text-lg font-semibold text-ink">{title}</TitleTag>
             {action}
           </div>
         </div>
-        {children}
+        {/* أقصى عرض للمحتوى (--mb-content-width) في مكان واحد لكل الشاشات، موسّطاً؛ والهوامش px-4 في كل شاشة كما هي. */}
+        <div className="mx-auto max-w-content">{children}</div>
       </div>
     </div>
   );

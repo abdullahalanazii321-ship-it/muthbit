@@ -715,6 +715,8 @@ function RegistrationReceived({ result }) {
 
 // حد الخادم لحقل الرمز قبل توحيده (z.string().max(40))، والفراغات منه.
 const JOIN_CODE_INPUT_MAX = 40;
+// طول الرمز بعد التوحيد — كـ JOIN_CODE_LENGTH في utils/joinCode.js. فحص توفير للمحاولات لا بديل عن حارس الخادم.
+const JOIN_CODE_LENGTH = 8;
 
 /** الرمز كما يرسله الموظف: بلا فراغات وبالحالة الكبيرة — التوحيد نفسه في الخادم (utils/joinCode.js). */
 const normalizeJoinCode = (value) => value.replace(/\s+/g, '').toUpperCase();
@@ -723,13 +725,20 @@ const EMPTY_JOIN = { code: '', fullName: '', email: '', password: '' };
 
 function JoinForm({ onChangeKind, onJoined, rateLimit }) {
   const [form, setForm] = useState(EMPTY_JOIN);
+  // خرج من حقل الرمز بعد أن كتب فيه: حينها فقط يظهر تلميح الطول إن كان ناقصاً — لا قبل الكتابة.
+  const [codeLeft, setCodeLeft] = useState(false);
+  const codeLength = normalizeJoinCode(form.code).length;
+  const codeHint =
+    codeLeft && codeLength > 0 && codeLength !== JOIN_CODE_LENGTH
+      ? `الرمز ثمانية محارف — كتبت ${codeLength}.`
+      : 'ثمانية محارف يعطيك إياها مالك الشركة.';
   // { status, message } — status لتمييز 409 الذي يحمل رابط الدخول تحته.
   const [serverError, setServerError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   // الزر مفعّل حين تكتمل الحقول وتحقق الكلمة السياسة؛ وما عدا ذلك يقرره الخادم برسالته.
   const ready =
-    normalizeJoinCode(form.code) !== '' &&
+    normalizeJoinCode(form.code).length === JOIN_CODE_LENGTH &&
     form.fullName.trim().length >= NAME_MIN &&
     form.email.trim() !== '' &&
     isPasswordValid(form.password);
@@ -791,8 +800,9 @@ function JoinForm({ onChangeKind, onJoined, rateLimit }) {
           controlClassName="font-mono tracking-widest"
           value={form.code}
           onChange={update('code')}
+          onBlur={() => setCodeLeft(true)}
           disabled={submitting}
-          hint={<p className="text-muted">ثمانية محارف يعطيك إياها مالك الشركة.</p>}
+          hint={<p className="text-muted">{codeHint}</p>}
         />
         <Field
           id={fieldId('fullName')}

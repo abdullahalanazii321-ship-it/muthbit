@@ -101,7 +101,7 @@ function RequestDetail({ id }) {
           وأسباب السياسة، ورقم أمر الشراء. قِيس قبلها: صنف بكلمة واحدة بلا مسافة (رقم موديل)
           كان يدفع الصفحة ٢٢٤ بكسل خارج الشاشة، واسم المورد ٤٥، وسبب السياسة ٢٢.
           وُضعت هنا لا في Alert ولا في Detail لأنهما مشتركان مع شاشات أخرى خارج هذه المهمة. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8">
+      <main className="break-words px-4 py-8">
         {detail.status === 'loading' && <DetailSkeleton />}
         {detail.status === 'error' && <DetailError error={detail.error} onRetry={detail.reload} />}
         {detail.status === 'ready' && (

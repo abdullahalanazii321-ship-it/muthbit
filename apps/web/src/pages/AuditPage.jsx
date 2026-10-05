@@ -46,10 +46,10 @@ export default function AuditPage() {
           بدل أن يدفع الصفحة أفقياً. وفوقها break-normal يُبقي الحاسب كما كان حرفياً — بدونه ينكسر المعرّف
           المختصر في عمود الكيان على سطرين. كانت ٧٦٨، ورُفعت مع صفّ السجل (AuditEvents) إلى ١٠٢٤:
           القائمة الجانبية تأخذ ٢٣٢ بكسل، فالصف الأفقي عند ٧٦٨ كان يدفع الصفحة ٨١٢ بكسل. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8 lg:break-normal">
+      <main className="break-words px-4 py-8 lg:break-normal">
         <p className="text-sm text-muted">سجل نهائي لا يُعدَّل ولا يُحذف — القيد مفروض في قاعدة البيانات نفسها.</p>
 
-        <div className="mt-6 grid max-w-lg gap-4 sm:grid-cols-2">
+        <div className="mt-6 flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end [&>*]:md:w-fit [&>*]:md:min-w-48">
           <Field
             id="entity-type"
             as="select"

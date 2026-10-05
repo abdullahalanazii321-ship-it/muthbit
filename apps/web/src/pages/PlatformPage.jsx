@@ -95,7 +95,7 @@ export default function PlatformPage() {
 
   return (
     <AppShell title="لوحة المنصة">
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="px-4 py-8">
         <p className="mt-1 text-sm text-muted">
           توثيق الشركات والموردين. المورد لا يقدّم عرضاً قبل توثيقه، والشركة لا تدخل قبل تفعيلها.
         </p>
@@ -139,7 +139,7 @@ function TabButton({ selected, onClick, children }) {
       role="tab"
       aria-selected={selected}
       onClick={onClick}
-      className={`-mb-px shrink-0 rounded-t-sm border-b-2 px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal sm:px-4 sm:py-2 ${
+      className={`-mb-px min-h-11 shrink-0 rounded-t-sm border-b-2 px-3 py-2.5 md:min-h-0 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal sm:px-4 sm:py-2 ${
         selected ? 'border-seal text-ink' : 'border-transparent text-muted hover:text-ink'
       }`}
     >
@@ -186,7 +186,7 @@ function CompaniesTab({ statusFilter, onStatus, openCompanyId, onOpen, onClose, 
 
   return (
     <div>
-      <div className="md:max-w-xs">
+      <div className="md:w-fit md:min-w-48">
         <Field id="company-status" as="select" label="الحالة" value={statusFilter} onChange={(e) => onStatus(e.target.value)}>
           <option value="">الكل</option>
           {COMPANY_STATUSES.map((status) => (
@@ -556,7 +556,7 @@ function SuppliersTab({ statusFilter, onStatus }) {
 
   return (
     <div>
-      <div className="md:max-w-xs">
+      <div className="md:w-fit md:min-w-48">
         <Field id="supplier-status" as="select" label="حالة التوثيق" value={statusFilter} onChange={(e) => onStatus(e.target.value)}>
           <option value="">الكل</option>
           {SUPPLIER_STATUSES.map((status) => (

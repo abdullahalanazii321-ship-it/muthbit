@@ -137,7 +137,7 @@ export default function TeamPage() {
       title="فريق الشركة"
       action={canManage && <Button onClick={() => openPanel({ kind: 'new' })}>مستخدم جديد</Button>}
     >
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="px-4 py-8">
         {notice && (
           <div className="mt-6">
             <Alert tone="seal">{notice}</Alert>

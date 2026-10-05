@@ -59,7 +59,7 @@ export default function NewRequestPage() {
   return (
     <AppShell title="طلب شراء جديد">
       {/* break-words موروثة: تكسر رسالة الخادم أو سبب السياسة الطويل بلا مسافة بدل أن يدفع الصفحة أفقياً. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8">
+      <main className="break-words px-4 py-8">
         <div className="max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
           {/* noValidate: فقاعات تحقق المتصفح تظهر بلغته، ونريد رسائل الخادم العربية بدلها. */}
           <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-5">

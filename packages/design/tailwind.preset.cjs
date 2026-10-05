@@ -53,7 +53,7 @@ module.exports = {
       lineHeight: { body: 'var(--mb-leading-body)' },
       spacing: { sidebar: 'var(--mb-sidebar-width)' },
       borderRadius: { DEFAULT: '6px', sm: '4px' },
-      maxWidth: { measure: '66ch' }
+      maxWidth: { measure: '66ch', content: 'var(--mb-content-width)' }
     }
   },
   plugins: []

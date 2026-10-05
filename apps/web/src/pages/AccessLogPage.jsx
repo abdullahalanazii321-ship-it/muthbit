@@ -83,7 +83,7 @@ export default function AccessLogPage() {
   return (
     <AppShell title="سجل الوصول">
       {/* break-words موروثة: اسم شركة أو سبب طويل بلا مسافة ينكسر ولا يمدّ الصفحة. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8">
+      <main className="break-words px-4 py-8">
         <p className="text-sm text-muted">سجل داخلي: لا تراه الشركات، ولا يمكن تعديله ولا حذفه.</p>
         <p className="mt-1 text-xs text-muted">فتحك هذه الصفحة وتغيير المرشّحين يُقيَّدان في السجل نفسه، فسترى قيودك أنت بين القيود.</p>
 

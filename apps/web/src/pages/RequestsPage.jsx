@@ -53,11 +53,11 @@ export default function RequestsPage() {
         </Button>
       }
     >
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="px-4 py-8">
         {notice.value && <CreatedNotice notice={notice.value} onClose={notice.dismiss} />}
 
         {/* المرشّح بعرض كامل على الجوال — هدف إصبع لا حقل ضيّق. وفوق ٧٦٨ بكسل يعود محصوراً كما كان. */}
-        <div className="md:max-w-xs">
+        <div className="md:w-fit md:min-w-48">
           <Field
             id="status-filter"
             as="select"
