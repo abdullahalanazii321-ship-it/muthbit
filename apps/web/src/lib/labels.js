@@ -57,6 +57,24 @@ export const userStatusLabels = {
 };
 
 // رموز action التي يكتبها الخادم في audit_log. رمز خارج القاموس يُعرض كما هو — لا ترجمة بالتخمين.
+// عمليات سجل الوصول الداخلي (platform_access_log) — رمز خارج القاموس يُعرض كما هو.
+export const accessActionLabels = {
+  'viewed.companies': 'عرض قائمة الشركات',
+  'viewed.company_users': 'عرض مستخدمي شركة',
+  'viewed.company_requests': 'عرض طلبات شركة',
+  'viewed.company_request': 'عرض طلب شراء',
+  'viewed.company_audit': 'عرض سجل تدقيق شركة',
+  'viewed.suppliers': 'عرض قائمة الموردين',
+  'viewed.supplier_categories': 'عرض فئات مورد',
+  'verified.company': 'تغيير توثيق شركة',
+  'verified.supplier': 'تغيير توثيق مورد',
+  'viewed.access_log': 'فتح سجل الوصول',
+  'created.platform_admin': 'إنشاء مسؤول منصة',
+  'suspended.platform_admin': 'إيقاف مسؤول منصة',
+  'granted.access_log': 'منح قراءة سجل الوصول',
+  'revoked.access_log': 'سحب قراءة سجل الوصول'
+};
+
 export const auditActionLabels = {
   'company.registered': 'تسجيل شركة',
   'company.active': 'توثيق شركة',
@@ -134,6 +152,10 @@ export function supplierStatusLabel(status) {
 }
 
 /** حدث التدقيق بالعربية، والرمز الإنجليزي كما هو إن لم يكن في القاموس. */
+export function accessActionLabel(action) {
+  return labelFrom(accessActionLabels, action);
+}
+
 export function auditActionLabel(action) {
   return labelFrom(auditActionLabels, action);
 }

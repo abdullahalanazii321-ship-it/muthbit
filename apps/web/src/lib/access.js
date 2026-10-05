@@ -36,6 +36,25 @@ export function homeFor(user) {
   return COMPANY_HOME;
 }
 
+export const ACCESS_LOG_PATH = '/platform/access-log';
+export const PLATFORM_ADMINS_PATH = '/platform/admins';
+
+/**
+ * قسم مالك المنصة: «سجل الوصول» و«مسؤولو المنصة» — لمالك المنصة وحده (users.is_platform_owner).
+ * مسؤول المنصة غير المالك لا يرى القسم، والعنوان المباشر يعيده إلى لوحة المنصة. والخادم يرفض كل مساراته أصلاً.
+ */
+export function canManagePlatform(user) {
+  return user?.role === 'platform_admin' && user?.isPlatformOwner === true;
+}
+
+/**
+ * «سجل الوصول» وحده: للمالك ولمن منحه المالك القراءة (users.can_read_access_log) — كما يسمح الخادم
+ * (accessLogReader في platform.routes.js). «مسؤولو المنصة» يبقى للمالك وحده (canManagePlatform).
+ */
+export function canViewAccessLog(user) {
+  return user?.role === 'platform_admin' && (user?.isPlatformOwner === true || user?.canReadAccessLog === true);
+}
+
 /** لوحة المنصة لمسؤول المنصة وحده — لا دور آخر يفتحها. */
 export function canViewPlatform(user) {
   return user?.role === 'platform_admin';

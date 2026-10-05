@@ -2,7 +2,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSession } from '../lib/session.js';
 import {
+  ACCESS_LOG_PATH,
+  PLATFORM_ADMINS_PATH,
   canCreateRequest,
+  canManagePlatform,
+  canViewAccessLog,
   canViewAudit,
   canViewPlatform,
   canViewRequests,
@@ -144,20 +148,36 @@ function NavLinks({ user, pathname, onNavigate, className = '' }) {
     canViewTeam(user) && { to: '/team', label: 'الفريق', active: pathname === '/team' },
     canViewAudit(user) && { to: '/audit', label: 'سجل التدقيق', active: pathname === '/audit' }
   ].filter(Boolean);
+  // قسم خاص بعد الروابط القائمة لا بينها — ترتيبها وشكلها كما كانا. ولمن لا يملك شيئاً منه لا يُرسم أصلاً.
+  // «سجل الوصول» للمالك ولمن مُنح القراءة، و«مسؤولو المنصة» للمالك وحده؛ وعنوان القسم يتبع ذلك.
+  const isOwner = canManagePlatform(user);
+  const ownerLinks = [
+    canViewAccessLog(user) && { to: ACCESS_LOG_PATH, label: 'سجل الوصول', active: pathname === ACCESS_LOG_PATH },
+    isOwner && { to: PLATFORM_ADMINS_PATH, label: 'مسؤولو المنصة', active: pathname === PLATFORM_ADMINS_PATH }
+  ].filter(Boolean);
+  const renderLink = (link) => (
+    <li key={link.to}>
+      <Link
+        to={link.to}
+        onClick={onNavigate}
+        aria-current={link.active ? 'page' : undefined} className={navLinkClass(link.active)}>
+        {link.label}
+      </Link>
+    </li>
+  );
   return (
     <nav aria-label="التنقل الرئيسي" className={className}>
-      <ul className="flex flex-col gap-1">
-        {links.map((link) => (
-          <li key={link.to}>
-            <Link
-              to={link.to}
-              onClick={onNavigate}
-              aria-current={link.active ? 'page' : undefined} className={navLinkClass(link.active)}>
-              {link.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <ul className="flex flex-col gap-1">{links.map(renderLink)}</ul>
+      {ownerLinks.length > 0 && (
+        <div className="mt-4 border-t border-nav-line pt-3">
+          <p id="nav-owner-section" className="px-4 pb-1 text-xs font-medium text-nav-muted">
+            {isOwner ? 'مالك المنصة' : 'صلاحية ممنوحة'}
+          </p>
+          <ul aria-labelledby="nav-owner-section" className="flex flex-col gap-1">
+            {ownerLinks.map(renderLink)}
+          </ul>
+        </div>
+      )}
     </nav>
   );
 }

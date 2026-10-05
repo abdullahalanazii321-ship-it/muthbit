@@ -16,6 +16,8 @@
   الجدول الذي لا يتّسع له المحتوى بطاقات، لا تمرير داخل صندوق.
   انضمام الموظفين: «انضمام لشركة قائمة» بطاقة ثالثة في اختيار إنشاء الحساب (`?type=join`)،
   ورمز الشركة وطلبات الانضمام في «الفريق» للمالك وحده (`canManageJoin` في `lib/access.js`).
+  قسم خاص في لوحة المنصة: «سجل الوصول» (`/platform/access-log`) لمالك المنصة ولمن منحه القراءة (`canViewAccessLog`)،
+  و«مسؤولو المنصة» (`/platform/admins`) للمالك وحده (`canManagePlatform`). علما الجلسة من `/api/auth/me`.
 - البريد: `apps/api/src/utils/mail.js` بسائقين يختارهما `MAIL_DRIVER` — `console` في التطوير (يطبع ولا يرسل)
   و `resend` في الإنتاج (`RESEND_API_KEY` و `MAIL_FROM`). الاختبار لا يرسل أبداً، والإنتاج بلا `resend` لا يرسل ولا يطبع الرابط.
 - `packages/design` — توكنز الهوية: `tokens.css` و `tokens.js` و `tailwind.preset.cjs`

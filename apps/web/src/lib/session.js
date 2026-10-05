@@ -19,7 +19,11 @@ export function normalizeUser(raw) {
     fullName: raw.full_name ?? raw.fullName ?? null,
     role: raw.role ?? null,
     companyId: raw.company_id ?? raw.companyId ?? null,
-    supplierId: raw.supplier_id ?? raw.supplierId ?? null
+    supplierId: raw.supplier_id ?? raw.supplierId ?? null,
+    // مالك المنصة وصلاحية قراءة سجل الوصول — يعيدهما /api/auth/me وحده (لا رد الدخول).
+    // إخفاء في الواجهة لا حماية: الخادم يرفض كل مسار منهما لغير صاحبه.
+    isPlatformOwner: (raw.isPlatformOwner ?? raw.is_platform_owner) === true,
+    canReadAccessLog: (raw.canReadAccessLog ?? raw.can_read_access_log) === true
   };
 }
 
@@ -70,6 +74,16 @@ export function SessionProvider({ children }) {
     persist(next);
     setSession(next);
     setCheck({ status: 'ready', message: null });
+    // رد الدخول بلا علمَي المالك والقراءة، فيُستكملان من /me في الخلفية — كما عند فتح التطبيق، بلا شاشة انتظار.
+    // إن فشل النداء بقيت الجلسة كما هي والعلمان false: الأقسام الخاصة تختفي ولا تظهر خطأً.
+    apiFetch('/api/auth/me')
+      .then((data) => {
+        if (activeSession?.token !== token) return;
+        const enriched = { token, user: normalizeUser(data?.user) };
+        persist(enriched);
+        setSession(enriched);
+      })
+      .catch(() => {});
   }, []);
 
   // عملية عميل فقط: لا يوجد مسار تسجيل خروج في الخادم.

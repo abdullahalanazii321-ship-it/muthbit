@@ -1,6 +1,17 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './lib/session.js';
-import { COMPANY_HOME, PLATFORM_HOME, SUPPLIER_HOME, canViewAudit, canViewTeam, homeFor } from './lib/access.js';
+import {
+  ACCESS_LOG_PATH,
+  COMPANY_HOME,
+  PLATFORM_ADMINS_PATH,
+  PLATFORM_HOME,
+  SUPPLIER_HOME,
+  canManagePlatform,
+  canViewAccessLog,
+  canViewAudit,
+  canViewTeam,
+  homeFor
+} from './lib/access.js';
 import LoginPage from './pages/LoginPage.jsx';
 import RegisterPage from './pages/RegisterPage.jsx';
 import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
@@ -11,6 +22,8 @@ import NewRequestPage from './pages/NewRequestPage.jsx';
 import RequestDetailPage from './pages/RequestDetailPage.jsx';
 import SupplierPortalPage from './pages/SupplierPortalPage.jsx';
 import PlatformPage from './pages/PlatformPage.jsx';
+import AccessLogPage from './pages/AccessLogPage.jsx';
+import PlatformAdminsPage from './pages/PlatformAdminsPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
 import TeamPage from './pages/TeamPage.jsx';
 import Alert from './components/Alert.jsx';
@@ -113,6 +126,28 @@ export default function App() {
           </RequireSession>
         }
       />
+      {/* قسم مالك المنصة: من لا يملكه يُعاد إلى لوحته بلا رسالة — لا يُعلَم بوجود الصفحة.
+          «سجل الوصول» للمالك ولمن مُنح القراءة، و«مسؤولو المنصة» للمالك وحده. */}
+      <Route
+        path={ACCESS_LOG_PATH}
+        element={
+          <RequireSession home={PLATFORM_HOME}>
+            <AllowedOnly allowed={canViewAccessLog} fallback={PLATFORM_HOME}>
+              <AccessLogPage />
+            </AllowedOnly>
+          </RequireSession>
+        }
+      />
+      <Route
+        path={PLATFORM_ADMINS_PATH}
+        element={
+          <RequireSession home={PLATFORM_HOME}>
+            <AllowedOnly allowed={canManagePlatform} fallback={PLATFORM_HOME}>
+              <PlatformAdminsPage />
+            </AllowedOnly>
+          </RequireSession>
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -135,10 +170,10 @@ function RequireSession({ home, children }) {
   return userHome === home ? children : <Navigate to={userHome} replace />;
 }
 
-/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى لوحة الشركة بلا رسالة — الخادم يرد 403 أصلاً. */
-function AllowedOnly({ allowed, children }) {
+/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى fallback بلا رسالة — الخادم يرد 403 أصلاً. */
+function AllowedOnly({ allowed, fallback = COMPANY_HOME, children }) {
   const { session } = useSession();
-  return allowed(session.user) ? children : <Navigate to={COMPANY_HOME} replace />;
+  return allowed(session.user) ? children : <Navigate to={fallback} replace />;
 }
 
 function GuestOnly({ children }) {

@@ -6,6 +6,7 @@ import { useResource } from '../lib/useResource.js';
 import Alert from './Alert.jsx';
 import Button from './Button.jsx';
 import Field from './Field.jsx';
+import Switch from './Switch.jsx';
 
 const ACTIVE_USER = 'active';
 const isCategoriesResponse = (data) => Array.isArray(data?.categories);
@@ -169,21 +170,13 @@ export default function LimitsForm({ companyPath, buyer, current, users, onSaved
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-3">
-          {/* المفتاح: المقبض في جهة النهاية حين يكون مفعّلاً — justify لا translate، فيصح في الاتجاهين. */}
-          <button
-            type="button"
-            role="switch"
+          <Switch
             id={ids.active}
-            aria-checked={form.active}
-            aria-describedby={ids.activeHint}
+            checked={form.active}
+            describedBy={ids.activeHint}
             onClick={() => setForm((currentForm) => ({ ...currentForm, active: !currentForm.active }))}
             disabled={submitting}
-            className={`flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal disabled:cursor-not-allowed disabled:opacity-60 ${
-              form.active ? 'justify-end border-seal bg-seal' : 'justify-start border-line-strong bg-surface-2'
-            }`}
-          >
-            <span className="h-4 w-4 rounded-full bg-surface" />
-          </button>
+          />
           <label htmlFor={ids.active} className="text-sm font-medium text-ink">
             مفعّل
           </label>
