@@ -132,13 +132,13 @@ export default function App() {
           </RequireSession>
         }
       />
-      {/* قسم مالك المنصة: من لا يملكه يرى صفحة 404 نفسها — لا يُعلَم بوجود الصفحة.
+      {/* قسم مالك المنصة: من لا يملكه يُعاد إلى لوحته بلا رسالة — لا يُعلَم بوجود الصفحة.
           «سجل الوصول» للمالك ولمن مُنح القراءة، و«مسؤولو المنصة» للمالك وحده. */}
       <Route
         path={ACCESS_LOG_PATH}
         element={
           <RequireSession home={PLATFORM_HOME}>
-            <AllowedOnly allowed={canViewAccessLog}>
+            <AllowedOnly allowed={canViewAccessLog} fallback={PLATFORM_HOME}>
               <AccessLogPage />
             </AllowedOnly>
           </RequireSession>
@@ -148,7 +148,7 @@ export default function App() {
         path={PLATFORM_ADMINS_PATH}
         element={
           <RequireSession home={PLATFORM_HOME}>
-            <AllowedOnly allowed={canManagePlatform}>
+            <AllowedOnly allowed={canManagePlatform} fallback={PLATFORM_HOME}>
               <PlatformAdminsPage />
             </AllowedOnly>
           </RequireSession>
@@ -169,20 +169,18 @@ function PublicHome() {
   return session ? <Navigate to={homeFor(session.user)} replace /> : <LandingPage />;
 }
 
-/**
- * home: لمن هذا المسار. الزائر إلى الدخول؛ وصاحب جلسة مكانه غيره يرى صفحة 404 في مكانه —
- * بالنص نفسه لمسار مجهول، فلا يُعلَم بوجود صفحة لا تخص دوره. لا تحويل: الخروج بزر.
- */
+/** home: لمن هذا المسار. من كان مكانه غيره يُعاد إلى مكانه. */
 function RequireSession({ home, children }) {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
-  return homeFor(session.user) === home ? children : <NotFoundPage />;
+  const userHome = homeFor(session.user);
+  return userHome === home ? children : <Navigate to={userHome} replace />;
 }
 
-/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يرى صفحة 404 نفسها — والخادم يرد 403 أصلاً. */
-function AllowedOnly({ allowed, children }) {
+/** مسار لأدوار محددة (allowed من access.js)؛ غيرهم يُعاد إلى fallback بلا رسالة — الخادم يرد 403 أصلاً. */
+function AllowedOnly({ allowed, fallback = COMPANY_HOME, children }) {
   const { session } = useSession();
-  return allowed(session.user) ? children : <NotFoundPage />;
+  return allowed(session.user) ? children : <Navigate to={fallback} replace />;
 }
 
 function GuestOnly({ children }) {

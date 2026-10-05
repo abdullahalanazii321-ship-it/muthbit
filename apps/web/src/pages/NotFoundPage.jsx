@@ -7,8 +7,8 @@ import Logo from '../components/Logo.jsx';
 import { CtaLink, PublicFrame } from './LandingPage.jsx';
 
 /**
- * «الصفحة غير موجودة» — لكل مسار مجهول، ولكل مسار لا يخص دور صاحب الجلسة.
- * النص واحد في الحالتين عمداً: لو قيل «موجودة لكنها ممنوعة عليك» لصار الفرق كاشفاً لما لا يحق له.
+ * «الصفحة غير موجودة» — لكل مسار لا يقابل أي صفحة في المنصة.
+ * المسار الموجود الذي لا يخص دور صاحب الجلسة لا يصل هنا: حرّاس المسارات في App.jsx يعيدونه إلى مكانه.
  * لا تحويل تلقائي: العنوان يبقى كما طُلب، والخروج بزر.
  * هادئة: «404» بلون muted لا بلون التنبيه — لا رسوم ولا حركة.
  */
@@ -24,7 +24,7 @@ function SignedInNotFound({ user }) {
       <main className="px-4 py-8">
         <section className="max-w-measure rounded border border-line bg-surface p-5 sm:p-6">
           <p className="font-display text-5xl font-semibold text-muted">404</p>
-          <p className="mt-4 text-ink">قد يكون الرابط قديماً، أو أن هذه الصفحة لا تخص دورك.</p>
+          <p className="mt-4 text-ink">قد يكون الرابط قديماً أو مكتوباً خطأ.</p>
           <div className="mt-6">
             <Button as={Link} to={homeFor(user)}>
               العودة إلى {homeLabelFor(user)}
