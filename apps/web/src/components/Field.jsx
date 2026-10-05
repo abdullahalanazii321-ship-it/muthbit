@@ -7,6 +7,7 @@ const controlClasses =
  * حقل بعنوان. as يحدد العنصر: input (الافتراضي) أو select أو textarea.
  * optional يضيف «(اختياري)» للعنوان، و hint سطر تحت الحقل (تحميل أو خطأ أو إرشاد).
  * type="password" يضيف زر إظهار/إخفاء داخل الحقل في طرفه. onRevealToggle يُنادى عند الضغط عليه.
+ * controlClassName يُضاف إلى أصناف الحقل نفسه لا بدلاً منها (رمز الشركة بخط أحادي متباعد مثلاً).
  */
 export default function Field({
   id,
@@ -15,6 +16,7 @@ export default function Field({
   optional = false,
   hint,
   onRevealToggle,
+  controlClassName = '',
   children,
   ...controlProps
 }) {
@@ -29,7 +31,7 @@ export default function Field({
       {isPassword ? (
         <PasswordInput id={id} aria-describedby={hintId} onRevealToggle={onRevealToggle} {...controlProps} />
       ) : (
-        <Control id={id} className={controlClasses} aria-describedby={hintId} {...controlProps}>
+        <Control id={id} className={`${controlClasses} ${controlClassName}`.trim()} aria-describedby={hintId} {...controlProps}>
           {children}
         </Control>
       )}

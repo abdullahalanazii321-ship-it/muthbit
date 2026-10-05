@@ -43,6 +43,23 @@ const KINDS = {
 };
 const KIND_KEYS = Object.keys(KINDS);
 
+/**
+ * الانضمام لشركة قائمة: نوع ثالث في الاختيار نفسه، لا نموذجاً من KINDS — حقوله غير حقولها
+ * (رمز الشركة واسم وبريد وكلمة مرور)، ومساره auth.routes.js ← POST /api/auth/join-company.
+ */
+const JOIN_KEY = 'join';
+const JOIN_KIND = {
+  title: 'انضمام لشركة قائمة',
+  description: 'شركتك مسجّلة في المنصة، ومعك رمزها.'
+};
+
+// ترتيب البطاقات: الشركة الجديدة أولاً كما كانت، ثم الانضمام لشركة قائمة، ثم المورد.
+const CHOOSER_OPTIONS = [
+  { key: 'company', ...KINDS.company },
+  { key: JOIN_KEY, ...JOIN_KIND },
+  { key: 'supplier', ...KINDS.supplier }
+];
+
 // حدود مخططي التسجيل في الخادم — متطابقة في المسارين.
 const NAME_MIN = 2;
 const ENTITY_NAME_MAX = 200;
@@ -219,8 +236,10 @@ export default function RegisterPage() {
   const [params, setParams] = useSearchParams();
   const requestedKind = params.get('type');
   const kindKey = KIND_KEYS.includes(requestedKind) ? requestedKind : null;
+  const joining = requestedKind === JOIN_KEY;
 
   const [result, setResult] = useState(null);
+  const [joinResult, setJoinResult] = useState(null);
   // 429 على مستوى الصفحة لا النموذج: عدّاد إنشاء الحساب في الخادم واحد للمسارين،
   // فتبديل النوع لا يعيد تفعيل الزر.
   const [rateLimitMessage, setRateLimitMessage] = useState(null);
@@ -240,13 +259,22 @@ export default function RegisterPage() {
           <PublicThemeToggle />
         </div>
 
-        {result ? (
+        {joinResult ? (
+          <JoinReceived result={joinResult} />
+        ) : result ? (
           <RegistrationReceived result={result} />
         ) : (
           <>
             <h1 className="font-display text-2xl font-semibold text-ink">إنشاء حساب</h1>
 
-            {kindKey ? (
+            {joining ? (
+              <JoinForm
+                onChangeKind={() => setParams({})}
+                onJoined={setJoinResult}
+                rateLimitMessage={rateLimitMessage}
+                onRateLimited={setRateLimitMessage}
+              />
+            ) : kindKey ? (
               <RegistrationForm
                 key={kindKey}
                 kind={KINDS[kindKey]}
@@ -278,16 +306,16 @@ function KindChooser({ onChoose }) {
       <p id="register-kind-label" className="text-ink">
         اختر نوع الحساب:
       </p>
-      <div role="group" aria-labelledby="register-kind-label" className="mt-3 grid gap-3 sm:grid-cols-2">
-        {KIND_KEYS.map((key) => (
+      <div role="group" aria-labelledby="register-kind-label" className="mt-3 grid gap-3">
+        {CHOOSER_OPTIONS.map(({ key, title, description }) => (
           <button
             key={key}
             type="button"
             onClick={() => onChoose(key)}
             className="flex flex-col items-start gap-1 rounded border border-line-strong bg-surface p-4 text-start transition-colors hover:border-seal hover:bg-seal-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
           >
-            <span className="font-display text-lg font-semibold text-ink">{KINDS[key].title}</span>
-            <span className="text-sm text-muted">{KINDS[key].description}</span>
+            <span className="font-display text-lg font-semibold text-ink">{title}</span>
+            <span className="text-sm text-muted">{description}</span>
           </button>
         ))}
       </div>
@@ -673,6 +701,192 @@ function RegistrationReceived({ result }) {
           فئتك المقترحة: <bdi className="font-semibold">{result.suggestedCategory}</bdi> — سنراجعها ونربطها بالفئة
           المناسبة.
         </p>
+      )}
+
+      <Button as={Link} to="/login" className="mt-8">
+        العودة إلى تسجيل الدخول
+      </Button>
+    </section>
+  );
+}
+
+/* ───────────── انضمام موظف إلى شركة قائمة برمزها ─────────────
+ * POST /api/auth/join-company { join_code, full_name, email, password } — auth.routes.js.
+ * الحساب يُنشأ بانتظار اعتماد الشركة بلا دور، فلا دخول بعد الرد: شاشة تأكيد وزر إلى الدخول.
+ * رسائل الخادم تُعرض كما هي حرفاً بحرف — الرمز الخاطئ برسالة واحدة لا تكشف عن الشركة شيئاً.
+ */
+
+// حد الخادم لحقل الرمز قبل توحيده (z.string().max(40))، والفراغات منه.
+const JOIN_CODE_INPUT_MAX = 40;
+
+/** الرمز كما يرسله الموظف: بلا فراغات وبالحالة الكبيرة — التوحيد نفسه في الخادم (utils/joinCode.js). */
+const normalizeJoinCode = (value) => value.replace(/\s+/g, '').toUpperCase();
+
+const EMPTY_JOIN = { code: '', fullName: '', email: '', password: '' };
+
+function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
+  const [form, setForm] = useState(EMPTY_JOIN);
+  // { status, message } — status لتمييز 409 الذي يحمل رابط الدخول تحته.
+  const [serverError, setServerError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // الزر مفعّل حين تكتمل الحقول وتحقق الكلمة السياسة؛ وما عدا ذلك يقرره الخادم برسالته.
+  const ready =
+    normalizeJoinCode(form.code) !== '' &&
+    form.fullName.trim().length >= NAME_MIN &&
+    form.email.trim() !== '' &&
+    isPasswordValid(form.password);
+
+  function update(name) {
+    return (event) => setForm((current) => ({ ...current, [name]: event.target.value }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!ready || submitting || rateLimitMessage) return;
+
+    const body = {
+      join_code: normalizeJoinCode(form.code),
+      full_name: form.fullName.trim(),
+      email: form.email.trim(),
+      password: form.password
+    };
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      const data = await apiFetch('/api/auth/join-company', { method: 'POST', body });
+      onJoined({
+        message: typeof data?.message === 'string' ? data.message : null,
+        companyName: typeof data?.company?.name === 'string' ? data.company.name : null
+      });
+    } catch (err) {
+      setSubmitting(false);
+      if (err?.status === 429) {
+        onRateLimited(errorMessage(err));
+        return;
+      }
+      setServerError({ status: err?.status ?? 0, message: errorMessage(err) });
+    }
+  }
+
+  return (
+    // noValidate: فقاعات تحقق المتصفح تظهر بلغته، ونريد رسائل الخادم العربية بدلها.
+    <form noValidate onSubmit={handleSubmit} className="mt-6 flex flex-col gap-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-surface-2 px-4 py-3">
+        <p className="text-sm text-ink">
+          نوع الحساب: <span className="font-semibold">{JOIN_KIND.title}</span>
+        </p>
+        <Button variant="secondary" onClick={onChangeKind} disabled={submitting}>
+          تغيير النوع
+        </Button>
+      </div>
+
+      <FieldGroup legend="بيانات الانضمام" messages={[]}>
+        {/* الرمز يصل الموظف في رسالة أو شفهياً: يُقبل بالحروف الصغيرة والفراغات ويُوحَّد عند الإرسال.
+            بخط أحادي متباعد ليُقرأ ويُنسخ محرفاً محرفاً، وبلا تكبير تلقائي ولا تصحيح من لوحة الجوال. */}
+        <Field
+          id={fieldId('joinCode')}
+          label="رمز الشركة"
+          dir="ltr"
+          autoFocus
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={JOIN_CODE_INPUT_MAX}
+          controlClassName="font-mono tracking-widest"
+          value={form.code}
+          onChange={update('code')}
+          disabled={submitting}
+          hint={<p className="text-muted">ثمانية محارف يعطيك إياها مالك الشركة.</p>}
+        />
+        <Field
+          id={fieldId('fullName')}
+          label="الاسم الكامل"
+          autoComplete="name"
+          maxLength={PERSON_NAME_MAX}
+          value={form.fullName}
+          onChange={update('fullName')}
+          disabled={submitting}
+        />
+        <Field
+          id={fieldId('email')}
+          label="البريد الإلكتروني"
+          type="email"
+          dir="ltr"
+          autoComplete="email"
+          value={form.email}
+          onChange={update('email')}
+          disabled={submitting}
+        />
+        {/* بلا maxLength عمداً كبقية نماذج التسجيل: الطول الأقصى شرط في القائمة، والخادم يرفض. */}
+        <Field
+          id={fieldId('password')}
+          label="كلمة المرور"
+          type="password"
+          dir="ltr"
+          autoComplete="new-password"
+          value={form.password}
+          onChange={update('password')}
+          disabled={submitting}
+          hint={<PasswordRules value={form.password} />}
+        />
+      </FieldGroup>
+
+      <div className="flex flex-col items-stretch gap-3">
+        {rateLimitMessage ? (
+          <Alert>{rateLimitMessage}</Alert>
+        ) : (
+          serverError && (
+            <div className="flex flex-col items-start gap-2">
+              <div className="self-stretch">
+                <Alert>{serverError.message}</Alert>
+              </div>
+              {serverError.status === 409 && (
+                <Link to="/login" className={`text-sm ${LINK_CLASSES}`}>
+                  الذهاب إلى تسجيل الدخول
+                </Link>
+              )}
+            </div>
+          )
+        )}
+
+        <Button type="submit" disabled={!ready || Boolean(rateLimitMessage)} loading={submitting} loadingText="جارٍ الإرسال…">
+          إرسال طلب الانضمام
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** بعد 201: الطلب وصل وهو بانتظار اعتماد الشركة. لا دخول تلقائي — زر واحد إلى صفحة الدخول. */
+function JoinReceived({ result }) {
+  const headingRef = useRef(null);
+  // الشاشة تحلّ محل النموذج، فينتقل التركيز إلى عنوانها لا يضيع مع زر اختفى.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
+  return (
+    <section aria-labelledby="join-received-title">
+      <h1
+        id="join-received-title"
+        ref={headingRef}
+        tabIndex={-1}
+        className="font-display text-2xl font-semibold text-ink focus:outline-none"
+      >
+        بانتظار اعتماد الشركة
+      </h1>
+
+      <div className="mt-6 flex flex-col gap-3">
+        {result.message && <Alert tone="seal">{result.message}</Alert>}
+        <Alert>لن يعمل تسجيل الدخول قبل أن يعتمد مالك الشركة طلبك.</Alert>
+      </div>
+
+      {result.companyName && (
+        <dl className="mt-6 grid grid-cols-1 gap-4 text-sm">
+          <Detail label="الشركة">{result.companyName}</Detail>
+        </dl>
       )}
 
       <Button as={Link} to="/login" className="mt-8">

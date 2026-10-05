@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { useSession } from '../lib/session.js';
-import { CREATABLE_ROLES, canManageTeam } from '../lib/access.js';
-import { formatSAR, roleLabel, userStatusLabel } from '../lib/labels.js';
+import { CREATABLE_ROLES, JOIN_ASSIGNABLE_ROLES, canManageJoin, canManageTeam } from '../lib/access.js';
+import { formatDateTime, formatSAR, roleLabel, userStatusLabel } from '../lib/labels.js';
 import { useResource } from '../lib/useResource.js';
 import { isPasswordValid } from '../lib/passwordPolicy.js';
 import AppShell from '../components/AppShell.jsx';
@@ -81,6 +81,8 @@ export default function TeamPage() {
   const { session } = useSession();
   const me = session.user;
   const canManage = canManageTeam(me);
+  // رمز الشركة وطلبات الانضمام للمالك وحده — من مصدر الصلاحيات نفسه (access.js).
+  const canJoin = canManageJoin(me);
   const companyPath = `/api/companies/${encodeURIComponent(me.companyId ?? '')}`;
 
   const users = useResource(`${companyPath}/users`, isUsersResponse);
@@ -145,6 +147,14 @@ export default function TeamPage() {
           <div className="mt-6">
             <Alert>{activateError}</Alert>
           </div>
+        )}
+
+        {canJoin && (
+          <>
+            <JoinCodeCard companyPath={companyPath} />
+            <JoinRequestsSection companyPath={companyPath} onDecided={finish} />
+            <h2 className="mt-8 font-display text-lg font-semibold text-ink">أعضاء الفريق</h2>
+          </>
         )}
 
         {panel?.kind === 'new' && (
@@ -674,6 +684,369 @@ function SuspendConfirm({ companyPath, user, onSuspended, onCancel }) {
           loadingText="جارٍ الإيقاف…"
         >
           تأكيد الإيقاف
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={sending}>
+          تراجع
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────── انضمام الموظفين برمز الشركة — للمالك وحده (canManageJoin) ─────────────
+ * المكوّنان لا يُرسمان لغير المالك، فلا يُنادى مسارا الرمز والطلبات أصلاً لمن يرفضه الخادم.
+ * الإخفاء انعكاس لقرار الخادم لا حماية: companies.routes.js يرفض غير المالك في كل مسار منها.
+ */
+
+const isJoinCodeResponse = (data) => typeof data?.join_code === 'string';
+const isJoinRequestsResponse = (data) => Array.isArray(data?.requests);
+// كم يبقى «نُسخ الرمز» ظاهراً.
+const COPIED_MS = 2500;
+
+const CARD = 'rounded border border-line bg-surface p-5 sm:p-6';
+
+/**
+ * رمز الشركة: مقسوماً مجموعتين من أربعة ليُقرأ شفهياً، وزر نسخ، وشرح ما هو، وتوليد رمز جديد بتأكيد.
+ * المنسوخ هو الرمز بلا فراغ — الفراغ عرض فقط، والخادم يزيل الفراغات على كل حال.
+ */
+function JoinCodeCard({ companyPath }) {
+  const code = useResource(`${companyPath}/join-code`, isJoinCodeResponse);
+  const [copyState, setCopyState] = useState(null); // null · 'copied' · 'failed'
+  const [confirming, setConfirming] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [rotateError, setRotateError] = useState(null);
+  const [rotated, setRotated] = useState(false);
+  const copiedTimer = useRef(null);
+  const headingId = useId();
+
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
+
+  const value = code.status === 'ready' ? code.data.join_code : '';
+
+  async function copy() {
+    clearTimeout(copiedTimer.current);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+    copiedTimer.current = setTimeout(() => setCopyState(null), COPIED_MS);
+  }
+
+  async function rotate() {
+    if (rotating) return;
+    setRotating(true);
+    setRotateError(null);
+    try {
+      await apiFetch(`${companyPath}/join-code/rotate`, { method: 'POST' });
+      setConfirming(false);
+      setRotated(true);
+      setCopyState(null);
+      code.reload();
+    } catch (err) {
+      // 401: api.js أنهى الجلسة وحوّل إلى /login.
+      if (err?.status === 401) return;
+      setRotateError(errorMessage(err));
+    } finally {
+      setRotating(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby={headingId} className={`mt-6 ${CARD}`}>
+      <h2 id={headingId} className="font-display text-lg font-semibold text-ink">
+        رمز الشركة
+      </h2>
+
+      {code.status === 'loading' && (
+        <div aria-busy="true" className="mt-4">
+          <p role="status" className="sr-only">
+            جارٍ التحميل…
+          </p>
+          <div className="h-9 w-56 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
+        </div>
+      )}
+
+      {code.status === 'error' && (
+        <div className="mt-4 flex flex-col items-start gap-4">
+          <Alert>{code.error.message}</Alert>
+          <Button variant="secondary" onClick={code.reload}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      )}
+
+      {code.status === 'ready' && (
+        <>
+          {/* LTR داخل صفحة RTL: المجموعة الأولى يساراً كما تُقرأ. ولقارئ الشاشة المحارف منفصلة. */}
+          <p className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label={`رمز الشركة: ${value.split('').join(' ')}`}>
+            <bdi dir="ltr" aria-hidden="true" className="font-mono text-2xl font-semibold tracking-widest text-ink">
+              {value.slice(0, 4)}
+              <span className="ms-3">{value.slice(4)}</span>
+            </bdi>
+          </p>
+          {code.data.join_code_updated_at && (
+            <p className="mt-1 text-xs text-muted">
+              آخر توليد: <bdi className="tabular-nums">{formatDateTime(code.data.join_code_updated_at)}</bdi>
+            </p>
+          )}
+
+          <p className="mt-3 text-sm text-muted">
+            يستخدمه الموظف ليطلب الانضمام إلى شركتك. الرمز لا يمنحه دخولاً حتى تعتمد طلبه.
+          </p>
+
+          {rotated && (
+            <div className="mt-4">
+              <Alert tone="seal">وُلّد رمز جديد. الرمز السابق لم يعد يعمل.</Alert>
+            </div>
+          )}
+
+          {!confirming && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={copy} disabled={code.refreshing}>
+                نسخ الرمز
+              </Button>
+              <Button variant="secondary" onClick={() => { setConfirming(true); setRotated(false); setRotateError(null); }} disabled={code.refreshing}>
+                توليد رمز جديد
+              </Button>
+              <p role="status" className="text-sm text-muted">
+                {copyState === 'copied' && 'نُسخ الرمز.'}
+                {copyState === 'failed' && 'تعذّر النسخ — انسخه يدوياً.'}
+              </p>
+            </div>
+          )}
+
+          {confirming && (
+            <div className="mt-4 flex max-w-measure flex-col gap-4">
+              <Alert>
+                <p>سيبطل الرمز الحالي فوراً عند التأكيد.</p>
+                <p className="mt-1">من استلمه ولم يرسل طلبه بعد لن يستطيع استخدامه — أرسل له الرمز الجديد.</p>
+              </Alert>
+              {rotateError && <Alert>{rotateError}</Alert>}
+              <div className="flex flex-wrap gap-3">
+                <Button variant="signal" onClick={rotate} loading={rotating} loadingText="جارٍ التوليد…">
+                  تأكيد توليد رمز جديد
+                </Button>
+                <Button variant="secondary" onClick={() => setConfirming(false)} disabled={rotating}>
+                  تراجع
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * طلبات الانضمام المعلّقة: الاسم والبريد ووقت الطلب، ولكل طلب اعتماد أو رفض في لوحة.
+ * بعد كل قرار تُعاد القائمة من الخادم، ويُبلَّغ الأب ليعيد قائمة الفريق (onDecided).
+ */
+function JoinRequestsSection({ companyPath, onDecided }) {
+  const requests = useResource(`${companyPath}/join-requests`, isJoinRequestsResponse);
+  // { kind: 'approve' | 'reject', request } — لوحة واحدة في كل مرة.
+  const [panel, setPanel] = useState(null);
+  const headingId = useId();
+  const list = requests.status === 'ready' ? requests.data.requests : [];
+
+  function decided(text) {
+    setPanel(null);
+    requests.reload();
+    onDecided(text);
+  }
+
+  return (
+    <section aria-labelledby={headingId} className="mt-8">
+      <h2 id={headingId} className="font-display text-lg font-semibold text-ink">
+        طلبات الانضمام
+      </h2>
+
+      {requests.status === 'loading' && (
+        <p role="status" className="mt-2 text-sm text-muted">
+          جارٍ تحميل الطلبات…
+        </p>
+      )}
+
+      {requests.status === 'error' && (
+        <div className="mt-3 flex flex-col items-start gap-4">
+          <Alert>{requests.error.message}</Alert>
+          <Button variant="secondary" onClick={requests.reload}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      )}
+
+      {/* لا صندوق فارغ: سطر واحد هادئ. */}
+      {requests.status === 'ready' && list.length === 0 && (
+        <p className="mt-2 text-sm text-muted">لا توجد طلبات انضمام.</p>
+      )}
+
+      {panel?.kind === 'approve' && (
+        <PanelCard key={`approve-${panel.request.id}`} title={`اعتماد ${panel.request.full_name}`}>
+          <ApproveJoinForm companyPath={companyPath} request={panel.request} onApproved={decided} onCancel={() => setPanel(null)} />
+        </PanelCard>
+      )}
+      {panel?.kind === 'reject' && (
+        <PanelCard key={`reject-${panel.request.id}`} title={`رفض طلب ${panel.request.full_name}`}>
+          <RejectJoinForm companyPath={companyPath} request={panel.request} onRejected={decided} onCancel={() => setPanel(null)} />
+        </PanelCard>
+      )}
+
+      {requests.status === 'ready' && list.length > 0 && (
+        <div className="mt-3">
+          {requests.refreshing && (
+            <p role="status" className="mb-3 text-sm text-muted">
+              جارٍ التحديث…
+            </p>
+          )}
+          <RecordCards label="طلبات الانضمام" busy={requests.refreshing}>
+            {list.map((request) => (
+              <RecordCard
+                key={request.id}
+                title={request.full_name}
+                actions={
+                  <>
+                    <Button onClick={() => setPanel({ kind: 'approve', request })} disabled={requests.refreshing}>
+                      اعتماد
+                    </Button>
+                    <Button variant="secondary" onClick={() => setPanel({ kind: 'reject', request })} disabled={requests.refreshing}>
+                      رفض
+                    </Button>
+                  </>
+                }
+              >
+                <RecordField label="البريد">
+                  <bdi>{request.email}</bdi>
+                </RecordField>
+                <RecordField label="وقت الطلب">
+                  <bdi className="tabular-nums">{formatDateTime(request.join_requested_at)}</bdi>
+                </RecordField>
+              </RecordCard>
+            ))}
+          </RecordCards>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * اعتماد طلب: الدور وسقف الطلب الواحد، وكلاهما إلزامي — الزر معطّل حتى يكتملا.
+ * الأدوار هي التي يقبلها الخادم وحدها (JOIN_ASSIGNABLE_ROLES)؛ والسقف الشهري والفئات والمعتمِد
+ * تبقى فارغة يضبطها المالك لاحقاً من «ضبط السقف».
+ */
+function ApproveJoinForm({ companyPath, request, onApproved, onCancel }) {
+  const idPrefix = useId();
+  const [role, setRole] = useState('');
+  const [ceiling, setCeiling] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const ceilingNumber = Number(ceiling);
+  const ceilingValid = ceiling.trim() !== '' && Number.isFinite(ceilingNumber) && ceilingNumber >= 0;
+  const canSubmit = JOIN_ASSIGNABLE_ROLES.includes(role) && ceilingValid;
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`${companyPath}/join-requests/${encodeURIComponent(request.id)}/approve`, {
+        method: 'POST',
+        body: { role, per_request_ceiling: ceilingNumber }
+      });
+      onApproved(`اعتُمد ${request.full_name} ${roleLabel(data?.user?.role ?? role)} بسقف ${formatSAR(ceilingNumber)} للطلب الواحد.`);
+    } catch (err) {
+      // 401: api.js أنهى الجلسة وحوّل إلى /login.
+      if (err?.status === 401) return;
+      setError(errorMessage(err));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    // noValidate: فقاعات تحقق المتصفح تظهر بلغته، ونريد رسائل الخادم العربية بدلها.
+    <form noValidate onSubmit={handleSubmit} className="flex max-w-measure flex-col gap-5">
+      <p className="text-sm text-muted">
+        <bdi>{request.email}</bdi>
+      </p>
+      <Field id={`${idPrefix}-role`} as="select" label="الدور" value={role} onChange={(event) => setRole(event.target.value)} disabled={submitting}>
+        <option value="" disabled>
+          اختر الدور
+        </option>
+        {JOIN_ASSIGNABLE_ROLES.map((option) => (
+          <option key={option} value={option}>
+            {roleLabel(option)}
+          </option>
+        ))}
+      </Field>
+      <Field
+        id={`${idPrefix}-ceiling`}
+        label="سقف الطلب الواحد (ر.س)"
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="any"
+        value={ceiling}
+        onChange={(event) => setCeiling(event.target.value)}
+        disabled={submitting}
+        hint={<p className="text-muted">تجاوز هذا السقف لا يمنع الطلب، بل يرفعه لمعتمِد أعلى. السقف الشهري والفئات تضبطها لاحقاً من «ضبط السقف».</p>}
+      />
+
+      {error && <Alert>{error}</Alert>}
+
+      <div className="flex flex-wrap gap-3">
+        <Button type="submit" disabled={!canSubmit} loading={submitting} loadingText="جارٍ الاعتماد…">
+          اعتماد الطلب
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+          إلغاء
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** رفض طلب: السبب إلزامي بحدّ الرفض نفسه في المنصة كلها (ReasonField · reasonReady)، ورسالة الخادم كما هي. */
+function RejectJoinForm({ companyPath, request, onRejected, onCancel }) {
+  const reasonId = useId();
+  const [reason, setReason] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function confirm() {
+    if (sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const data = await apiFetch(`${companyPath}/join-requests/${encodeURIComponent(request.id)}/reject`, {
+        method: 'POST',
+        body: { reason: reason.trim() }
+      });
+      onRejected(data?.message ?? null);
+    } catch (err) {
+      // 401: api.js أنهى الجلسة وحوّل إلى /login.
+      if (err?.status === 401) return;
+      setError(errorMessage(err));
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="flex max-w-measure flex-col gap-5">
+      <p className="text-sm text-muted">
+        <bdi>{request.email}</bdi> — لن يستطيع الدخول. ويمكنه أن يرسل طلباً جديداً بالبريد نفسه إن كان الرفض خطأً.
+      </p>
+      <ReasonField id={reasonId} label="سبب الرفض" value={reason} onChange={(event) => setReason(event.target.value)} disabled={sending} />
+
+      {error && <Alert>{error}</Alert>}
+
+      <div className="flex flex-wrap gap-3">
+        <Button variant="signal" onClick={confirm} disabled={!reasonReady(reason)} loading={sending} loadingText="جارٍ الرفض…">
+          تأكيد الرفض
         </Button>
         <Button variant="secondary" onClick={onCancel} disabled={sending}>
           تراجع

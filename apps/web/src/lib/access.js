@@ -66,6 +66,17 @@ export function canViewTeam(user) {
   return TEAM_VIEW_ROLES.includes(user?.role);
 }
 
+/**
+ * انضمام الموظفين برمز الشركة — للمالك وحده كما في companies.routes.js: يقرأ الرمز ويبدّله ويعتمد ويرفض.
+ * المدير المالي يضبط السقوف ويوقف، لكنه لا يُدخل أحداً إلى الشركة. الخادم يرفض غير المالك أصلاً؛ هذا إخفاء لا حماية.
+ */
+export function canManageJoin(user) {
+  return user?.role === 'company_owner';
+}
+
+/** الدوران الوحيدان اللذان يُسندان عند اعتماد طلب انضمام (JOIN_ASSIGNABLE_ROLES في الخادم). */
+export const JOIN_ASSIGNABLE_ROLES = ['procurement_buyer', 'procurement_manager'];
+
 /** أزرار الكتابة في شاشة الفريق — مدير المشتريات يقرأ فقط. */
 export function canManageTeam(user) {
   return TEAM_MANAGE_ROLES.includes(user?.role);
