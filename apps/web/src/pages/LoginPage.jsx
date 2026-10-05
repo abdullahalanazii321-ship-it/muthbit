@@ -8,6 +8,8 @@ import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
+import RateLimitNotice from '../components/RateLimitNotice.jsx';
+import { retryLabel, useRateLimit } from '../lib/useRateLimit.js';
 
 // اسم الحركة التي يبدؤها tokens.css على input:-webkit-autofill داخل .mb-entrance.
 const AUTOFILL_ANIMATION = 'mb-autofill';
@@ -25,9 +27,9 @@ export default function LoginPage() {
   const [autofilled, setAutofilled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  // 429: الخادم حجب المحاولات لكثرتها. نعطّل الزر ونكتفي برسالته —
-  // لا مؤقّت تنازلي ولا إعادة محاولة تلقائية.
-  const [rateLimited, setRateLimited] = useState(false);
+  // 429: الخادم حجب المحاولات لكثرتها. رسالته كما هي، وتحتها الوقت المتبقي يتناقص،
+  // والزر معطّل يعرض الوقت حتى الصفر — ولا إعادة محاولة تلقائية.
+  const rateLimit = useRateLimit();
 
   const isEmpty = !autofilled && (email.trim() === '' || password === '');
 
@@ -58,7 +60,7 @@ export default function LoginPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitting || rateLimited) return;
+    if (submitting || rateLimit.blocked) return;
 
     // الضغط تفاعل، فكروم يكشف الآن ما عبّأه.
     const values = syncFields();
@@ -78,8 +80,7 @@ export default function LoginPage() {
       // كل دور إلى مكانه مباشرة: مسؤول المنصة إلى لوحته، والمورد إلى بوابته، وغيرهما إلى لوحة الشركة.
       navigate(homeFor(normalizeUser(data.user)), { replace: true });
     } catch (err) {
-      setError(errorMessage(err));
-      if (err?.status === 429) setRateLimited(true);
+      if (!rateLimit.capture(err)) setError(errorMessage(err));
       setSubmitting(false);
     }
   }
@@ -142,10 +143,14 @@ export default function LoginPage() {
             نسيت كلمة المرور؟
           </Link>
 
-          {error && <Alert>{error}</Alert>}
+          {rateLimit.blocked ? (
+            <RateLimitNotice message={rateLimit.message} remaining={rateLimit.remaining} />
+          ) : (
+            error && <Alert>{error}</Alert>
+          )}
 
-          <Button type="submit" disabled={isEmpty || rateLimited} loading={submitting} loadingText="جارٍ التحقق…">
-            تسجيل الدخول
+          <Button type="submit" disabled={isEmpty || rateLimit.blocked} loading={submitting} loadingText="جارٍ التحقق…">
+            {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'تسجيل الدخول'}
           </Button>
         </form>
 

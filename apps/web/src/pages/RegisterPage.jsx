@@ -7,6 +7,8 @@ import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
+import RateLimitNotice from '../components/RateLimitNotice.jsx';
+import { retryLabel, useRateLimit } from '../lib/useRateLimit.js';
 import Detail from '../components/Detail.jsx';
 import PasswordRules from '../components/PasswordRules.jsx';
 
@@ -240,9 +242,9 @@ export default function RegisterPage() {
 
   const [result, setResult] = useState(null);
   const [joinResult, setJoinResult] = useState(null);
-  // 429 على مستوى الصفحة لا النموذج: عدّاد إنشاء الحساب في الخادم واحد للمسارين،
-  // فتبديل النوع لا يعيد تفعيل الزر.
-  const [rateLimitMessage, setRateLimitMessage] = useState(null);
+  // 429 على مستوى الصفحة لا النموذج: عدّاد إنشاء الحساب في الخادم واحد للمسارات الثلاثة،
+  // فتبديل النوع لا يعيد تفعيل الزر — والعدّاد التنازلي يستمر عبر التبديل.
+  const rateLimit = useRateLimit();
 
   // mb-entrance: الباب الأمامي يتبع الوضع المختار كصفحة التعريف — رموز المنصة بقيم --mb-mkt-* داخل هذه الشاشة وحدها (tokens.css).
   // break-words موروثة: رسائل 400 واسم المنشأة في «بانتظار التوثيق» بلا مسافة كانت تمدّ الصفحة أفقياً.
@@ -271,8 +273,7 @@ export default function RegisterPage() {
               <JoinForm
                 onChangeKind={() => setParams({})}
                 onJoined={setJoinResult}
-                rateLimitMessage={rateLimitMessage}
-                onRateLimited={setRateLimitMessage}
+                rateLimit={rateLimit}
               />
             ) : kindKey ? (
               <RegistrationForm
@@ -280,8 +281,7 @@ export default function RegisterPage() {
                 kind={KINDS[kindKey]}
                 onChangeKind={() => setParams({})}
                 onRegistered={setResult}
-                rateLimitMessage={rateLimitMessage}
-                onRateLimited={setRateLimitMessage}
+                rateLimit={rateLimit}
               />
             ) : (
               <KindChooser onChoose={(key) => setParams({ type: key })} />
@@ -323,7 +323,7 @@ function KindChooser({ onChoose }) {
   );
 }
 
-function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, onRateLimited }) {
+function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimit }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [selectedSlugs, setSelectedSlugs] = useState([]);
   const [otherChecked, setOtherChecked] = useState(false);
@@ -385,7 +385,7 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitting || rateLimitMessage || categoriesBlocked) return;
+    if (submitting || rateLimit.blocked || categoriesBlocked) return;
 
     // بترتيب القائمة لا بترتيب النقر، ومما وصل من الخادم وحده.
     const slugs = categories.items.filter((item) => selectedSlugs.includes(item.slug)).map((item) => item.slug);
@@ -417,10 +417,7 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
       });
     } catch (err) {
       setSubmitting(false);
-      if (err?.status === 429) {
-        onRateLimited(errorMessage(err));
-        return;
-      }
+      if (rateLimit.capture(err)) return;
       setServerError({ status: err?.status ?? 0, message: errorMessage(err) });
       if (err?.status === 400) {
         setGroupErrors({
@@ -504,8 +501,8 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
       </FieldGroup>
 
       <div className="flex flex-col items-stretch gap-3">
-        {rateLimitMessage ? (
-          <Alert>{rateLimitMessage}</Alert>
+        {rateLimit.blocked ? (
+          <RateLimitNotice message={rateLimit.message} remaining={rateLimit.remaining} />
         ) : (
           serverError && (
             <div className="flex flex-col items-start gap-2">
@@ -523,14 +520,14 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimitMessage, 
 
         <Button
           type="submit"
-          disabled={Boolean(rateLimitMessage) || categoriesBlocked || categoriesMissing}
+          disabled={rateLimit.blocked || categoriesBlocked || categoriesMissing}
           loading={submitting}
           loadingText="جارٍ الإرسال…"
         >
-          إرسال طلب التسجيل
+          {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'إرسال طلب التسجيل'}
         </Button>
         {/* الزر المعطّل يقول لماذا، وإلا ظن المورد المنصة معطّلة. */}
-        {categoriesMissing && !categoriesBlocked && !rateLimitMessage && (
+        {categoriesMissing && !categoriesBlocked && !rateLimit.blocked && (
           <p className="text-sm text-muted">{MESSAGES.categories}</p>
         )}
       </div>
@@ -724,7 +721,7 @@ const normalizeJoinCode = (value) => value.replace(/\s+/g, '').toUpperCase();
 
 const EMPTY_JOIN = { code: '', fullName: '', email: '', password: '' };
 
-function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
+function JoinForm({ onChangeKind, onJoined, rateLimit }) {
   const [form, setForm] = useState(EMPTY_JOIN);
   // { status, message } — status لتمييز 409 الذي يحمل رابط الدخول تحته.
   const [serverError, setServerError] = useState(null);
@@ -743,7 +740,7 @@ function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!ready || submitting || rateLimitMessage) return;
+    if (!ready || submitting || rateLimit.blocked) return;
 
     const body = {
       join_code: normalizeJoinCode(form.code),
@@ -761,10 +758,7 @@ function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
       });
     } catch (err) {
       setSubmitting(false);
-      if (err?.status === 429) {
-        onRateLimited(errorMessage(err));
-        return;
-      }
+      if (rateLimit.capture(err)) return;
       setServerError({ status: err?.status ?? 0, message: errorMessage(err) });
     }
   }
@@ -834,8 +828,8 @@ function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
       </FieldGroup>
 
       <div className="flex flex-col items-stretch gap-3">
-        {rateLimitMessage ? (
-          <Alert>{rateLimitMessage}</Alert>
+        {rateLimit.blocked ? (
+          <RateLimitNotice message={rateLimit.message} remaining={rateLimit.remaining} />
         ) : (
           serverError && (
             <div className="flex flex-col items-start gap-2">
@@ -851,8 +845,8 @@ function JoinForm({ onChangeKind, onJoined, rateLimitMessage, onRateLimited }) {
           )
         )}
 
-        <Button type="submit" disabled={!ready || Boolean(rateLimitMessage)} loading={submitting} loadingText="جارٍ الإرسال…">
-          إرسال طلب الانضمام
+        <Button type="submit" disabled={!ready || rateLimit.blocked} loading={submitting} loadingText="جارٍ الإرسال…">
+          {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'إرسال طلب الانضمام'}
         </Button>
       </div>
     </form>

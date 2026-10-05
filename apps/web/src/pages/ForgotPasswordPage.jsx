@@ -5,6 +5,8 @@ import EntranceShell from '../components/EntranceShell.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
+import RateLimitNotice from '../components/RateLimitNotice.jsx';
+import { retryLabel, useRateLimit } from '../lib/useRateLimit.js';
 
 const LINK_CLASSES =
   'rounded-sm font-medium text-ink underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal';
@@ -19,18 +21,20 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState(null);
   // null قبل الإرسال؛ بعده نص الخادم كما هو.
   const [sentMessage, setSentMessage] = useState(null);
+  // 429: رسالة الخادم كما هي وتحتها الوقت المتبقي، والزر معطّل حتى الصفر.
+  const rateLimit = useRateLimit();
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitting || email.trim() === '') return;
+    if (submitting || rateLimit.blocked || email.trim() === '') return;
     setSubmitting(true);
     setError(null);
     try {
       const data = await apiFetch('/api/auth/forgot-password', { method: 'POST', body: { email: email.trim() } });
       setSentMessage(typeof data?.message === 'string' ? data.message : '');
     } catch (err) {
-      // 400 لبريد مشوّه و 429 للحدّ: رسالة الخادم العربية كما هي.
-      setError(errorMessage(err));
+      // 400 لبريد مشوّه: رسالة الخادم العربية كما هي. و 429 للحدّ: إلى العدّاد.
+      if (!rateLimit.capture(err)) setError(errorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -64,10 +68,19 @@ export default function ForgotPasswordPage() {
               disabled={submitting}
             />
 
-            {error && <Alert>{error}</Alert>}
+            {rateLimit.blocked ? (
+              <RateLimitNotice message={rateLimit.message} remaining={rateLimit.remaining} />
+            ) : (
+              error && <Alert>{error}</Alert>
+            )}
 
-            <Button type="submit" disabled={email.trim() === ''} loading={submitting} loadingText="جارٍ الإرسال…">
-              أرسل رابط إعادة التعيين
+            <Button
+              type="submit"
+              disabled={email.trim() === '' || rateLimit.blocked}
+              loading={submitting}
+              loadingText="جارٍ الإرسال…"
+            >
+              {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'أرسل رابط إعادة التعيين'}
             </Button>
           </form>
         </>
