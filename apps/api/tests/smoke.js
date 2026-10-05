@@ -715,10 +715,11 @@ async function run() {
       { status: lastAttempt.status, body: lastAttempt.body }
     );
 
+    // كان: «يحمل رأس RateLimit-Remaining». غُيّر بطلب المالك: تلك الرؤوس تكشف المحاولات المتبقية.
     check(
-      'رد الحجب يحمل رأس RateLimit-Remaining',
-      lastAttempt.headers['ratelimit-remaining'] !== undefined,
-      { remaining: lastAttempt.headers['ratelimit-remaining'] }
+      'رد الحجب يحمل رأس Retry-After',
+      Number(lastAttempt.headers['retry-after']) > 0,
+      { retryAfter: lastAttempt.headers['retry-after'] }
     );
 
     // أدوات المراقبة تنادي /health كل دقيقة: حجبه إنذار كاذب بأن المنصة سقطت.
@@ -2340,6 +2341,142 @@ async function run() {
     { codes: leakedCodes.n, password: leakedPassword.n }
   );
 
+  }
+
+  section('٢٨ — مؤقّت الحجب: الوقت المتبقي ولا شيء غيره');
+
+  // كل محدد يُستنفد هنا من عنوان خاص في النطاق 198.51.100.x (محجوز للتوثيق، ولم يُستعمل قبل هذا القسم)،
+  // فلا يتأثر عدّاد بما سبقه. المحددات تُفتح لهذا القسم وحده ثم تُغلق في finally.
+  setLimitsEnabledForTests(true);
+  try {
+    const net = (n) => `198.51.100.${n}`;
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const stamp28 = Date.now();
+    const loginFrom = (ip, email) =>
+      request(app).post('/api/auth/login').set('X-Forwarded-For', ip).send({ email, password: 'wrong-password' });
+    async function exhaust(times, send) {
+      const replies = [];
+      for (let attempt = 1; attempt <= times; attempt += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        replies.push(await send(attempt));
+      }
+      return replies;
+    }
+
+    // حجب واحد من كل محدد، ومعه طول نافذته بالثواني.
+    const loginIp = await exhaust(11, (n) => loginFrom(net(1), `t28-ip-${stamp28}-${n}@nowhere-demo.sa`));
+    const loginMissing = await exhaust(6, (n) => loginFrom(net(10 + n), `t28-missing-${stamp28}@nowhere-demo.sa`));
+    const loginExisting = await exhaust(6, (n) => loginFrom(net(20 + n), 'admin@supplier2-demo.sa'));
+    const creation = await exhaust(6, (n) =>
+      request(app).post(n === 6 ? '/api/auth/join-company' : '/api/auth/register-company').set('X-Forwarded-For', net(2)).send({})
+    );
+    const agentKey = await exhaust(21, (n) =>
+      request(app).get('/api/requests').set('X-Forwarded-For', net(3)).set('X-API-Key', `t28-bogus-${n}`)
+    );
+    const forgotIp = await exhaust(11, (n) =>
+      request(app).post('/api/auth/forgot-password').set('X-Forwarded-For', net(4)).send({ email: `t28-f-${stamp28}-${n}@nowhere-demo.sa` })
+    );
+    const forgotEmail = await exhaust(6, (n) =>
+      request(app).post('/api/auth/forgot-password').set('X-Forwarded-For', net(30 + n)).send({ email: `t28-fe-${stamp28}@nowhere-demo.sa` })
+    );
+    const resetIp = await exhaust(11, () =>
+      request(app)
+        .post('/api/auth/reset-password')
+        .set('X-Forwarded-For', net(5))
+        .send({ token: crypto.randomBytes(32).toString('base64url'), password: 'x' })
+    );
+    const general = await exhaust(121, () => request(app).get('/api/categories').set('X-Forwarded-For', net(6)));
+
+    const blocks28 = [
+      { name: 'الدخول بالعنوان', reply: loginIp[10], windowS: 900 },
+      { name: 'الدخول بالبريد', reply: loginMissing[5], windowS: 900 },
+      { name: 'إنشاء الحساب والانضمام', reply: creation[5], windowS: 3600 },
+      { name: 'مفتاح الوكيل', reply: agentKey[20], windowS: 900 },
+      { name: 'نسيت بالعنوان', reply: forgotIp[10], windowS: 900 },
+      { name: 'نسيت بالبريد', reply: forgotEmail[5], windowS: 3600 },
+      { name: 'إعادة التعيين', reply: resetIp[10], windowS: 900 },
+      { name: 'الحد العام', reply: general[120], windowS: 60 }
+    ];
+    const seconds = (r) => r.body && r.body.error && r.body.error.details && r.body.error.details.retry_after_seconds;
+    const summary28 = blocks28.map((b) => ({
+      name: b.name,
+      status: b.reply.status,
+      header: b.reply.headers['retry-after'],
+      seconds: seconds(b.reply)
+    }));
+
+    check(
+      'كل محدد عند الحجب: 429 ومعه الثواني المتبقية في الجسم وفي رأس Retry-After — متطابقين وضمن نافذته',
+      blocks28.every(
+        (b) =>
+          b.reply.status === 429 &&
+          Number.isInteger(seconds(b.reply)) &&
+          seconds(b.reply) > 0 &&
+          seconds(b.reply) <= b.windowS &&
+          b.reply.headers['retry-after'] === String(seconds(b.reply))
+      ),
+      summary28
+    );
+
+    const messages28 = [...new Set(blocks28.map((b) => b.reply.body.error && b.reply.body.error.message))];
+    check(
+      'نص الحجب واحد حرفاً بحرف في كل المحددات، بالرمز نفسه، وبلا مدة مكتوبة فيه',
+      messages28.length === 1 &&
+        typeof messages28[0] === 'string' &&
+        messages28[0].length > 0 &&
+        !/[0-9٠-٩]/.test(messages28[0]) &&
+        blocks28.every((b) => b.reply.body.error.code === 'rate_limited'),
+      { messages: messages28 }
+    );
+
+    // التناقص: نافذة ثابتة لا يمدّها الطلب المحجوب. بعد ثانية ونيف يجب أن يقلّ الرقم.
+    const firstBlock = loginIp[10];
+    await sleep(1100);
+    const laterBlock = await loginFrom(net(1), `t28-ip-${stamp28}-later@nowhere-demo.sa`);
+    check(
+      'الوقت المتبقي يتناقص بين طلبين محجوبين — في الجسم وفي الرأس',
+      laterBlock.status === 429 &&
+        seconds(laterBlock) < seconds(firstBlock) &&
+        Number(laterBlock.headers['retry-after']) < Number(firstBlock.headers['retry-after']),
+      { first: seconds(firstBlock), later: seconds(laterBlock), headers: [firstBlock.headers['retry-after'], laterBlock.headers['retry-after']] }
+    );
+
+    // لا كاشف: الجسم ثلاثة حقول لا رابع لها، والتفاصيل حقل واحد؛ ولا رأس RateLimit-* في أي ردّ —
+    // لا قبل الحجب (حيث كان يُرسَل «المتبقي: 4») ولا عنده.
+    const allReplies = [loginIp, loginMissing, loginExisting, creation, agentKey, forgotIp, forgotEmail, resetIp, general].flat();
+    const leakyHeaders = allReplies.flatMap((r) => Object.keys(r.headers).filter((h) => /ratelimit/i.test(h)));
+    check(
+      'لا شيء يكشف المحاولات المتبقية: لا رأس RateLimit-* في أي ردّ، وجسم الحجب بلا حقل غير الثواني',
+      leakyHeaders.length === 0 &&
+        blocks28.every(
+          (b) =>
+            JSON.stringify(Object.keys(b.reply.body.error)) === JSON.stringify(['code', 'message', 'details']) &&
+            JSON.stringify(Object.keys(b.reply.body.error.details)) === JSON.stringify(['retry_after_seconds'])
+        ),
+      { leakyHeaders: [...new Set(leakyHeaders)] }
+    );
+
+    // وجود الحساب: الحجب بالبريد لحساب موجود (لم يمسّه قسم محدّدات قبله) ولحساب غير موجود — عند العدد نفسه، والرد نفسه سوى الرقم.
+    const shape = (r) => {
+      const copy = JSON.parse(JSON.stringify(r.body));
+      if (copy.error && copy.error.details) copy.error.details.retry_after_seconds = 'n';
+      return JSON.stringify(copy);
+    };
+    const headerNames = (r) => Object.keys(r.headers).filter((h) => !['date', 'etag', 'content-length'].includes(h)).sort().join(',');
+    check(
+      'لا شيء يكشف وجود الحساب: الحجب بالبريد لحساب موجود وغير موجود عند العدد نفسه وبالرد والرؤوس نفسها',
+      JSON.stringify(loginExisting.map((r) => r.status)) === JSON.stringify(loginMissing.map((r) => r.status)) &&
+        loginExisting[5].status === 429 &&
+        shape(loginExisting[5]) === shape(loginMissing[5]) &&
+        headerNames(loginExisting[5]) === headerNames(loginMissing[5]),
+      {
+        existing: loginExisting.map((r) => r.status),
+        missing: loginMissing.map((r) => r.status),
+        headers: [headerNames(loginExisting[5]), headerNames(loginMissing[5])]
+      }
+    );
+  } finally {
+    setLimitsEnabledForTests(false);
   }
 
   console.log(`\n${'='.repeat(58)}`);

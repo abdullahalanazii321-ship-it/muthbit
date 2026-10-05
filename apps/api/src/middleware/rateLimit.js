@@ -25,19 +25,32 @@ function setLimitsEnabledForTests(enabled) {
 const skipInTestEnv = () => env.env === 'test' && !enabledInTests;
 
 /**
- * مظروف الخطأ نفسه المستخدم في كل المنصة، برمز `rate_limited` ورسالة عربية.
- * `retry_after_seconds` يُحسب من وقت تصفير النافذة، فإن غاب فمن طول النافذة.
+ * نص الحجب — واحد حرفاً بحرف في كل المحددات، ولا يقبل createLimiter نصاً غيره.
+ *
+ * لو اختلف النص بين محددين لصار الفرق كاشفاً: يعرف المهاجم أيّ حدّ أصابه
+ * (حدّ البريد يعني أن البريد مستهدَف، حدّ المفتاح يعني أن المسار يقبل مفاتيح).
+ * ولا مدة فيه: الوقت المتبقي يصل منفصلاً (رأس Retry-After و details.retry_after_seconds)
+ * فتعدّه الواجهة تنازلياً — ومدة ثابتة في النص كانت ستناقض العدّاد.
  */
-function buildHandler(windowMs, messageAr) {
+const BLOCK_MESSAGE = 'محاولات كثيرة خلال وقت قصير. انتظر قليلاً ثم أعد المحاولة.';
+
+/**
+ * مظروف الخطأ نفسه المستخدم في كل المنصة، برمز `rate_limited` ونص الحجب الواحد.
+ * `retry_after_seconds` يُحسب من وقت تصفير النافذة، فإن غاب فمن طول النافذة —
+ * والرقم نفسه في رأس `Retry-After`، يكتبه هذا المعالج لا الحزمة، فلا يختلف الاثنان.
+ * لا شيء غيرهما: لا محاولات متبقية ولا أي أثر لوجود الحساب.
+ */
+function buildHandler(windowMs) {
   return (req, res) => {
     const resetTime = req.rateLimit && req.rateLimit.resetTime;
     const remainingMs = resetTime ? resetTime.getTime() - Date.now() : windowMs;
     const retryAfterSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
 
+    res.set('Retry-After', String(retryAfterSeconds));
     return res.status(429).json({
       error: {
         code: 'rate_limited',
-        message: messageAr,
+        message: BLOCK_MESSAGE,
         details: { retry_after_seconds: retryAfterSeconds }
       }
     });
@@ -52,7 +65,6 @@ function buildHandler(windowMs, messageAr) {
 function createLimiter({
   windowMs,
   limit,
-  messageAr,
   skipSuccessfulRequests = false,
   appliesTo = null,
   requestWasSuccessful = null,
@@ -61,27 +73,18 @@ function createLimiter({
   return rateLimit({
     windowMs,
     limit,
-    standardHeaders: true,
+    // رؤوس RateLimit-* مطفأة عمداً: كانت تُرسل مع كل ردّ — قبل الحجب — المحاولات المتبقية
+    // وحدّ كل محدد (RateLimit-Remaining: 4 بعد أول محاولة دخول فاشلة). رأس Retry-After
+    // يكتبه buildHandler عند الحجب وحده.
+    standardHeaders: false,
     legacyHeaders: false,
     skipSuccessfulRequests,
     skip: (req, res) => skipInTestEnv() || (appliesTo ? !appliesTo(req, res) : false),
     ...(requestWasSuccessful ? { requestWasSuccessful } : {}),
     ...(keyGenerator ? { keyGenerator } : {}),
-    handler: buildHandler(windowMs, messageAr)
+    handler: buildHandler(windowMs)
   });
 }
-
-const GENERIC_MESSAGE = 'محاولات كثيرة خلال وقت قصير. انتظر قليلاً ثم أعد المحاولة.';
-
-/**
- * رسالة الحجب على مسار الدخول — واحدة لا اثنتان.
- *
- * المحدّدان (بالـ IP وبالبريد) يشتركان في هذا الثابت عمداً: لو اختلفت الرسالتان
- * لصار الفرق بينهما كاشفاً — يجرّب المهاجم خمس محاولات على بريد، فإن جاءته الرسالة
- * الخاصة بحدّ البريد عرف أنه أصاب شيئاً. نكون قد أغلقنا باباً وفتحنا نافذة.
- * لا تفصل هذا الثابت إلى نصّين مهما بدا التمييز مفيداً في السجلّات.
- */
-const LOGIN_RATE_MESSAGE = 'محاولات دخول كثيرة. انتظر ١٥ دقيقة ثم أعد المحاولة.';
 
 /**
  * الدخول — حدّ المصدر: ١٠ محاولات في ١٥ دقيقة لكل عنوان IP.
@@ -92,7 +95,6 @@ const LOGIN_RATE_MESSAGE = 'محاولات دخول كثيرة. انتظر ١٥ 
 const loginLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  messageAr: LOGIN_RATE_MESSAGE,
   skipSuccessfulRequests: true
 });
 
@@ -132,7 +134,6 @@ function loginEmailKey(req) {
 const loginEmailLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 5,
-  messageAr: LOGIN_RATE_MESSAGE,
   skipSuccessfulRequests: true,
   keyGenerator: loginEmailKey
 });
@@ -147,7 +148,6 @@ const loginEmailLimiter = createLimiter({
 const accountCreationLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
-  messageAr: GENERIC_MESSAGE
 });
 
 /**
@@ -166,7 +166,6 @@ const accountCreationLimiter = createLimiter({
 const agentKeyLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 20,
-  messageAr: 'محاولات كثيرة بمفتاح وكيل غير صالح. انتظر ١٥ دقيقة ثم أعد المحاولة.',
   skipSuccessfulRequests: true,
   appliesTo: (req) => Boolean(req.headers['x-api-key']),
   requestWasSuccessful: (req, res) => res.statusCode !== 401
@@ -175,7 +174,7 @@ const agentKeyLimiter = createLimiter({
 /**
  * نسيت كلمة المرور — حدّان كالدخول: بالمصدر ثم بالبريد المُستهدَف.
  *
- * الرسالة GENERIC_MESSAGE في الاثنين، وهي نفسها رسالة محدّد الإنشاء والحد العام القائمين:
+ * نص الحجب BLOCK_MESSAGE في الاثنين كبقية المحددات:
  * لو انفردت رسالة البريد لعرف المهاجم أنه بلغ حدّ بريد بعينه. والحدّ بالبريد يعدّ كل طلب
  * سواء وُجد الحساب أو لا — العدّ قبل المسار ولا يعرف عن الحساب شيئاً — فلا يكشف وجوده.
  *
@@ -186,13 +185,11 @@ const agentKeyLimiter = createLimiter({
 const forgotPasswordLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  messageAr: GENERIC_MESSAGE
 });
 
 const forgotPasswordEmailLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   limit: 5,
-  messageAr: GENERIC_MESSAGE,
   keyGenerator: loginEmailKey
 });
 
@@ -206,7 +203,6 @@ const forgotPasswordEmailLimiter = createLimiter({
 const resetPasswordLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  messageAr: GENERIC_MESSAGE,
   skipSuccessfulRequests: true
 });
 
@@ -214,7 +210,6 @@ const resetPasswordLimiter = createLimiter({
 const apiLimiter = createLimiter({
   windowMs: 60 * 1000,
   limit: 120,
-  messageAr: GENERIC_MESSAGE
 });
 
 module.exports = {
