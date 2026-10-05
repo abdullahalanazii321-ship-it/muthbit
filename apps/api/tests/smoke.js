@@ -1672,6 +1672,463 @@ async function run() {
   // طلبات «نسيت» أعلاه أطلقت مهام إصدار بعد الرد: تُنتظر قبل إغلاق اتصال القاعدة.
   await passwordReset.whenIdle();
 
+  section('٢٦ — انضمام الموظفين برمز الشركة');
+
+  // الدورة كاملة: رمز صحيح ← دخول مرفوض برسالة الانتظار ← اعتماد بدور وسقف ← دخول بالدور والسقف ← قيود السجل.
+  // ثم: رمز خاطئ يُرفض، ورفض بسبب مكتوب يمنع الدخول، وعودة المرفوض بالبريد نفسه.
+  const ownerJ = await login('admin@owner-demo.sa');
+  const financeJ = await login('admin@finance-demo.sa');
+  const owner2J = await login('admin@owner2-demo.sa');
+  const platformJ = await login('admin@platform-demo.sa');
+  const joinCompanyId = ownerJ.user.company_id;
+  const joinPath = `/api/companies/${joinCompanyId}`;
+  const joinCompany2Path = `/api/companies/${owner2J.user.company_id}`;
+  const JOIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const CODE_RE = new RegExp(`^[${JOIN_ALPHABET}]{8}$`);
+  const JOIN_PASSWORD = 'Join-Test-2026!';
+  const joinStamp = Date.now();
+  const join = (body, ip) => {
+    const call = request(app).post('/api/auth/join-company');
+    if (ip) call.set('X-Forwarded-For', ip);
+    return call.send(body);
+  };
+  const tryLogin = (email, password) => request(app).post('/api/auth/login').send({ email, password });
+  const teamEmails = async (token, path = joinPath) =>
+    ((await request(app).get(`${path}/users`).set(auth(token))).body.users || []).map((u) => u.email);
+
+  // ── الرمز: من يقرؤه ومن يبدّله ──
+  const codeRes = await request(app).get(`${joinPath}/join-code`).set(auth(ownerJ.token));
+  const joinCode = codeRes.body.join_code;
+  check('المالك يقرأ رمز الانضمام بصيغته (٨ محارف من الأبجدية المعتمدة)', codeRes.status === 200 && CODE_RE.test(joinCode || ''), {
+    status: codeRes.status
+  });
+
+  const financeCode = await request(app).get(`${joinPath}/join-code`).set(auth(financeJ.token));
+  const financeRotate = await request(app).post(`${joinPath}/join-code/rotate`).set(auth(financeJ.token));
+  const financeRequests = await request(app).get(`${joinPath}/join-requests`).set(auth(financeJ.token));
+  check(
+    'المدير المالي لا يقرأ الرمز ولا يبدّله ولا يرى طلبات الانضمام',
+    financeCode.status === 403 && financeRotate.status === 403 && financeRequests.status === 403,
+    { code: financeCode.status, rotate: financeRotate.status, requests: financeRequests.status }
+  );
+
+  const crossCode = await request(app).get(`${joinPath}/join-code`).set(auth(owner2J.token));
+  const platformCode = await request(app).get(`${joinPath}/join-code`).set(auth(platformJ.token));
+  check('مالك شركة أخرى ومسؤول المنصة لا يقرآن رمز الشركة', crossCode.status === 403 && platformCode.status === 403, {
+    cross: crossCode.status,
+    platform: platformCode.status
+  });
+
+  const codeStats = await db('companies')
+    .select(db.raw('count(*)::int AS total'), db.raw('count(DISTINCT join_code)::int AS distinct_codes'))
+    .first();
+  const badFormat = (await db('companies').select('join_code')).filter((c) => !CODE_RE.test(c.join_code || ''));
+  check(
+    'لكل شركة رمز بالصيغة المعتمدة، ولا يتكرر رمز بين شركتين',
+    codeStats.total > 0 && codeStats.total === codeStats.distinct_codes && badFormat.length === 0,
+    { total: codeStats.total, distinct: codeStats.distinct_codes, badFormat: badFormat.length }
+  );
+
+  // ── رمز خاطئ ──
+  let wrongCode = joinCode;
+  for (let i = 0; wrongCode === joinCode || (await db('companies').where({ join_code: wrongCode }).first()); i += 1) {
+    wrongCode = `${JOIN_ALPHABET[(JOIN_ALPHABET.indexOf(joinCode[0]) + 1 + i) % 32]}${joinCode.slice(1)}`;
+  }
+  const applicantEmail = `join-${joinStamp}@company-test.sa`;
+  const wrongJoin = await join({ join_code: wrongCode, full_name: 'طالب انضمام', email: applicantEmail, password: JOIN_PASSWORD });
+  const garbageJoin = await join({ join_code: '12', full_name: 'طالب انضمام', email: applicantEmail, password: JOIN_PASSWORD });
+  check(
+    'رمز غير صحيح يُرفض برسالة واحدة ثابتة ولا يُنشئ حساباً',
+    wrongJoin.status === 400 &&
+      wrongJoin.body.error.message === 'رمز الشركة غير صحيح.' &&
+      garbageJoin.status === 400 &&
+      garbageJoin.body.error.message === 'رمز الشركة غير صحيح.' &&
+      !(await db('users').where({ email: applicantEmail }).first()),
+    { wrong: wrongJoin.body, garbage: garbageJoin.body }
+  );
+
+  const weakJoin = await join({ join_code: joinCode, full_name: 'طالب انضمام', email: applicantEmail, password: 'abc12345' });
+  check(
+    'سياسة كلمة المرور نفسها بلا تخفيف',
+    weakJoin.status === 400 && /^كلمة المرور يجب أن تحقّق/.test(weakJoin.body.error.message),
+    weakJoin.body
+  );
+
+  // ── تسجيل برمز صحيح (بحالة صغيرة وفراغات) ──
+  const spacedCode = `${joinCode.slice(0, 4).toLowerCase()} ${joinCode.slice(4).toLowerCase()}`;
+  const joined = await join({ join_code: spacedCode, full_name: 'طالب انضمام', email: applicantEmail, password: JOIN_PASSWORD });
+  check(
+    'التسجيل برمز صحيح ينجح بعد إزالة الفراغات وتوحيد الحالة',
+    joined.status === 201,
+    joined.body
+  );
+  check(
+    'الرد لا يحمل رمزاً ولا شيئاً عن الشركة سوى اسمها',
+    joined.body.company &&
+      JSON.stringify(Object.keys(joined.body.company)) === '["name"]' &&
+      joined.body.company.name === 'شركة الأفق للمقاولات' &&
+      !JSON.stringify(joined.body).includes(joinCode),
+    joined.body
+  );
+  const applicant = await db('users').where({ email: applicantEmail }).first();
+  check(
+    'المسجّل: قيد المراجعة، بلا دور وبلا سقف، مربوط بشركة الرمز',
+    applicant &&
+      applicant.status === 'join_pending' &&
+      applicant.role === null &&
+      applicant.company_id === joinCompanyId &&
+      applicant.join_requested_at !== null &&
+      !(await db('buyer_limits').where({ user_id: applicant.id }).first()),
+    applicant && { status: applicant.status, role: applicant.role }
+  );
+
+  const duplicateJoin = await join({ join_code: joinCode, full_name: 'طالب انضمام', email: applicantEmail, password: JOIN_PASSWORD });
+  const seedEmailJoin = await join({ join_code: joinCode, full_name: 'منتحل', email: 'admin@buyer-demo.sa', password: JOIN_PASSWORD });
+  check(
+    'بريد مستخدم مسبقاً يُرفض برسالة واضحة — طلب معلّق أو حساب فعّال',
+    duplicateJoin.status === 409 &&
+      duplicateJoin.body.error.message === 'البريد الإلكتروني مسجّل مسبقاً.' &&
+      seedEmailJoin.status === 409 &&
+      seedEmailJoin.body.error.message === 'البريد الإلكتروني مسجّل مسبقاً.',
+    { duplicate: duplicateJoin.body, seed: seedEmailJoin.body }
+  );
+
+  // ── الدخول قبل الاعتماد ──
+  const pendingLoginJ = await tryLogin(applicantEmail, JOIN_PASSWORD);
+  const pendingWrongPass = await tryLogin(applicantEmail, 'Wrong-Pass-2026!');
+  check(
+    'قيد المراجعة لا يدخل — ورسالة الانتظار بعد صحة كلمة المرور لا قبلها',
+    pendingLoginJ.status === 401 &&
+      pendingLoginJ.body.error.message === 'حسابك بانتظار اعتماد الشركة.' &&
+      pendingWrongPass.status === 401 &&
+      pendingWrongPass.body.error.message === 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    { right: pendingLoginJ.body, wrong: pendingWrongPass.body }
+  );
+
+  // ── لا يظهر إلا في طلبات الانضمام ──
+  const platformTeam = await request(app)
+    .get(`${joinPath}/users`)
+    .set(auth(platformJ.token));
+  check(
+    'قيد المراجعة لا يظهر في قائمة الفريق — للمالك ولا لمسؤول المنصة',
+    !(await teamEmails(ownerJ.token)).includes(applicantEmail) &&
+      !(platformTeam.body.users || []).some((u) => u.email === applicantEmail)
+  );
+  const pendingList = await request(app).get(`${joinPath}/join-requests`).set(auth(ownerJ.token));
+  const listed = (pendingList.body.requests || []).find((r) => r.email === applicantEmail);
+  check(
+    'طلبات الانضمام: الاسم والبريد ووقت الطلب لا غير',
+    pendingList.status === 200 &&
+      listed &&
+      JSON.stringify(Object.keys(listed).sort()) === JSON.stringify(['email', 'full_name', 'id', 'join_requested_at']),
+    listed
+  );
+
+  // ── العزل والأدوار ──
+  const crossApproveOwnPath = await request(app)
+    .post(`${joinCompany2Path}/join-requests/${applicant.id}/approve`)
+    .set(auth(owner2J.token))
+    .send({ role: 'procurement_buyer', per_request_ceiling: 1000 });
+  const crossApproveTheirPath = await request(app)
+    .post(`${joinPath}/join-requests/${applicant.id}/approve`)
+    .set(auth(owner2J.token))
+    .send({ role: 'procurement_buyer', per_request_ceiling: 1000 });
+  const crossReject = await request(app)
+    .post(`${joinCompany2Path}/join-requests/${applicant.id}/reject`)
+    .set(auth(owner2J.token))
+    .send({ reason: 'محاولة من شركة أخرى' });
+  check(
+    'مالك شركة أخرى لا يعتمد الطلب ولا يرفضه — من مسار شركته ولا من مسار الشركة',
+    crossApproveOwnPath.status === 404 && crossApproveTheirPath.status === 403 && crossReject.status === 404,
+    { own: crossApproveOwnPath.status, theirs: crossApproveTheirPath.status, reject: crossReject.status }
+  );
+
+  const financeApprove = await request(app)
+    .post(`${joinPath}/join-requests/${applicant.id}/approve`)
+    .set(auth(financeJ.token))
+    .send({ role: 'procurement_buyer', per_request_ceiling: 1000 });
+  check('المدير المالي لا يعتمد طلب انضمام', financeApprove.status === 403, financeApprove.body);
+
+  const asMember = await Promise.all([
+    request(app).post(`${joinPath}/users/${applicant.id}/activate`).set(auth(ownerJ.token)),
+    request(app).post(`${joinPath}/users/${applicant.id}/suspend`).set(auth(ownerJ.token)).send({ reason: 'محاولة إيقاف طالب' }),
+    request(app).put(`${joinPath}/buyers/${applicant.id}/limits`).set(auth(ownerJ.token)).send({ per_request_ceiling: 5000 })
+  ]);
+  check(
+    'التفعيل والإيقاف والسقف ترفض قيد المراجعة — لا يُعامَل عضواً ولا مشترياً',
+    asMember.every((r) => r.status === 404) && (await db('users').where({ id: applicant.id }).first()).status === 'join_pending',
+    asMember.map((r) => r.status)
+  );
+
+  const approveWith = (body) =>
+    request(app).post(`${joinPath}/join-requests/${applicant.id}/approve`).set(auth(ownerJ.token)).send(body);
+  const noRole = await approveWith({ per_request_ceiling: 15000 });
+  const noCeiling = await approveWith({ role: 'procurement_buyer' });
+  const forbiddenRoles = await Promise.all(
+    ['finance_manager', 'company_owner', 'platform_admin', 'ai_agent', 'supplier_admin'].map((role) =>
+      approveWith({ role, per_request_ceiling: 15000 })
+    )
+  );
+  const negativeCeiling = await approveWith({ role: 'procurement_buyer', per_request_ceiling: -1 });
+  check(
+    'الاعتماد يشترط الدور والسقف برسالة واضحة لكل منهما',
+    noRole.status === 400 &&
+      noRole.body.error.message === 'حدّد الدور عند اعتماد طلب الانضمام.' &&
+      noCeiling.status === 400 &&
+      noCeiling.body.error.message === 'حدّد سقف الطلب الواحد عند اعتماد طلب الانضمام.' &&
+      negativeCeiling.status === 400,
+    { noRole: noRole.body, noCeiling: noCeiling.body, negative: negativeCeiling.status }
+  );
+  check(
+    'لا مالك ولا مسؤول منصة ولا مدير مالي ولا غيرهم عبر الاعتماد — المشتري ومدير المشتريات فقط',
+    forbiddenRoles.every((r) => r.status === 400) && (await db('users').where({ id: applicant.id }).first()).status === 'join_pending',
+    forbiddenRoles.map((r) => r.status)
+  );
+
+  // ── الاعتماد والدخول ──
+  const approvedJ = await approveWith({ role: 'procurement_buyer', per_request_ceiling: 15000 });
+  check(
+    'اعتماد بدور المشتري وسقف ١٥٬٠٠٠',
+    approvedJ.status === 200 && approvedJ.body.user.status === 'active' && approvedJ.body.user.role === 'procurement_buyer',
+    approvedJ.body
+  );
+  const approvedLogin = await tryLogin(applicantEmail, JOIN_PASSWORD);
+  const approvedMe = approvedLogin.status === 200
+    ? await request(app).get('/api/auth/me').set(auth(approvedLogin.body.token))
+    : { body: {} };
+  check(
+    'بعد الاعتماد يدخل بالدور والسقف الصحيحين — والسقف الشهري فارغ يكمله المالك',
+    approvedLogin.status === 200 &&
+      approvedLogin.body.user.role === 'procurement_buyer' &&
+      approvedMe.body.limits &&
+      Number(approvedMe.body.limits.per_request_ceiling) === 15000 &&
+      approvedMe.body.limits.monthly_ceiling === null &&
+      approvedMe.body.limits.approver_user_id === null,
+    { login: approvedLogin.status, limits: approvedMe.body.limits }
+  );
+  const approveAgain = await approveWith({ role: 'procurement_manager', per_request_ceiling: 1 });
+  check('الطلب المبتوت فيه لا يُعتمد مرة ثانية', approveAgain.status === 404, approveAgain.body);
+  check('بعد الاعتماد يظهر في قائمة الفريق', (await teamEmails(ownerJ.token)).includes(applicantEmail));
+
+  const joinAudit = await db('audit_log').where({ entity_type: 'user', entity_id: applicant.id }).orderBy('id', 'asc');
+  const requestedRow = joinAudit.find((r) => r.action === 'user.join_requested');
+  const approvedRow = joinAudit.find((r) => r.action === 'user.join_approved');
+  check(
+    'السجل: من طلب، ومن اعتمد ومتى، وبأي دور وأي سقف',
+    requestedRow &&
+      requestedRow.actor_user_id === applicant.id &&
+      requestedRow.company_id === joinCompanyId &&
+      approvedRow &&
+      approvedRow.actor_user_id === ownerJ.user.id &&
+      approvedRow.created_at &&
+      approvedRow.payload.role === 'procurement_buyer' &&
+      Number(approvedRow.payload.per_request_ceiling) === 15000,
+    joinAudit.map((r) => r.action)
+  );
+
+  // ── تبديل الرمز ──
+  const rotated = await request(app).post(`${joinPath}/join-code/rotate`).set(auth(ownerJ.token));
+  const newCode = rotated.body.join_code;
+  const oldCodeJoin = await join({ join_code: joinCode, full_name: 'متأخر', email: `late-${joinStamp}@company-test.sa`, password: JOIN_PASSWORD });
+  const readBack = await request(app).get(`${joinPath}/join-code`).set(auth(ownerJ.token));
+  check(
+    'رمز جديد يُبطل القديم فوراً',
+    rotated.status === 200 &&
+      CODE_RE.test(newCode || '') &&
+      newCode !== joinCode &&
+      readBack.body.join_code === newCode &&
+      oldCodeJoin.status === 400 &&
+      oldCodeJoin.body.error.message === 'رمز الشركة غير صحيح.',
+    { rotate: rotated.status, old: oldCodeJoin.status }
+  );
+  const rotationRow = await db('audit_log')
+    .where({ entity_type: 'company', entity_id: joinCompanyId, action: 'company.join_code_rotated' })
+    .orderBy('id', 'desc')
+    .first();
+  const codeLeaks = await db('audit_log')
+    .whereRaw('payload::text LIKE ?', [`%${joinCode}%`])
+    .orWhereRaw('payload::text LIKE ?', [`%${newCode}%`])
+    .count({ n: '*' })
+    .first();
+  check(
+    'السجل يقول إن الرمز بُدّل، ولا يحوي أي رمز — لا القديم ولا الجديد',
+    rotationRow && rotationRow.actor_user_id === ownerJ.user.id && rotationRow.payload === null && Number(codeLeaks.n) === 0,
+    { leaks: codeLeaks.n }
+  );
+
+  // ── الرفض بسبب مكتوب ──
+  const rejectedEmail = `join-rejected-${joinStamp}@company-test.sa`;
+  const joined2 = await join({ join_code: newCode, full_name: 'طالب ثانٍ', email: rejectedEmail, password: JOIN_PASSWORD });
+  const applicant2 = await db('users').where({ email: rejectedEmail }).first();
+  const rejectWith = (body) =>
+    request(app).post(`${joinPath}/join-requests/${applicant2.id}/reject`).set(auth(ownerJ.token)).send(body);
+  const rejectNoReasonJ = await rejectWith({});
+  const rejectShortJ = await rejectWith({ reason: 'لا  ' });
+  check(
+    'الرفض بلا سبب أو بسبب قصير يُرفض بنص قاعدة الرفض حرفياً',
+    joined2.status === 201 &&
+      rejectNoReasonJ.status === 400 &&
+      rejectNoReasonJ.body.error.message === 'الرفض يحتاج سبباً مكتوباً.' &&
+      rejectShortJ.status === 400 &&
+      rejectShortJ.body.error.message === 'الرفض يحتاج سبباً مكتوباً.',
+    { none: rejectNoReasonJ.body, short: rejectShortJ.body }
+  );
+  const rejectReason = 'ليس من موظفي الشركة';
+  const rejectedJ = await rejectWith({ reason: rejectReason });
+  const rejectedRowDb = await db('users').where({ id: applicant2.id }).first();
+  check(
+    'رفض بسبب مكتوب: الحالة والسبب ومن قرر',
+    rejectedJ.status === 200 &&
+      rejectedRowDb.status === 'join_rejected' &&
+      rejectedRowDb.role === null &&
+      rejectedRowDb.join_rejection_reason === rejectReason &&
+      rejectedRowDb.join_decided_by === ownerJ.user.id,
+    { status: rejectedRowDb.status }
+  );
+  const rejectedLogin = await tryLogin(rejectedEmail, JOIN_PASSWORD);
+  check(
+    'المرفوض لا يدخل برسالته',
+    rejectedLogin.status === 401 && rejectedLogin.body.error.message === 'لم يُعتمد طلب انضمامك.',
+    rejectedLogin.body
+  );
+  const pendingAfterReject = await request(app).get(`${joinPath}/join-requests`).set(auth(ownerJ.token));
+  check(
+    'المرفوض لا يظهر في الفريق ولا في طلبات الانضمام',
+    !(await teamEmails(ownerJ.token)).includes(rejectedEmail) &&
+      !(pendingAfterReject.body.requests || []).some((r) => r.email === rejectedEmail)
+  );
+  const rejectedAuditRow = await db('audit_log')
+    .where({ entity_type: 'user', entity_id: applicant2.id, action: 'user.join_rejected' })
+    .first();
+  check(
+    'السجل: من رفض وبأي سبب',
+    rejectedAuditRow && rejectedAuditRow.actor_user_id === ownerJ.user.id && rejectedAuditRow.payload.reason === rejectReason,
+    rejectedAuditRow && rejectedAuditRow.payload
+  );
+
+  // ── عودة المرفوض بالبريد نفسه ──
+  const REAPPLY_PASSWORD = 'Join-Again-2026!';
+  const reapplied = await join({ join_code: newCode, full_name: 'طالب ثانٍ', email: rejectedEmail, password: REAPPLY_PASSWORD });
+  const reappliedRow = await db('users').where({ id: applicant2.id }).first();
+  check(
+    'المرفوض يسجّل من جديد بالبريد نفسه: يعود قيد المراجعة وتُفرَّغ حقول القرار السابق',
+    reapplied.status === 201 &&
+      reappliedRow.status === 'join_pending' &&
+      reappliedRow.join_decided_at === null &&
+      reappliedRow.join_decided_by === null &&
+      reappliedRow.join_rejection_reason === null &&
+      reappliedRow.session_version === rejectedRowDb.session_version + 1,
+    { status: reapplied.status, row: reappliedRow && reappliedRow.status }
+  );
+  const reapplyAudit = await db('audit_log')
+    .where({ entity_type: 'user', entity_id: applicant2.id, action: 'user.join_requested' })
+    .orderBy('id', 'desc')
+    .first();
+  const oldPassAfterReapply = await tryLogin(rejectedEmail, JOIN_PASSWORD);
+  const newPassAfterReapply = await tryLogin(rejectedEmail, REAPPLY_PASSWORD);
+  check(
+    'العودة في السجل، وكلمة المرور الجديدة وحدها تُعرف — ورسالة الانتظار من جديد',
+    reapplyAudit &&
+      reapplyAudit.payload.reapplied === true &&
+      reapplyAudit.payload.previous_rejection_reason === rejectReason &&
+      oldPassAfterReapply.body.error.message === 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' &&
+      newPassAfterReapply.body.error.message === 'حسابك بانتظار اعتماد الشركة.',
+    { audit: reapplyAudit && reapplyAudit.payload }
+  );
+
+  // ── شركة غير مفعّلة، وإيقاف الشركة ──
+  const inactiveCr = String(joinStamp + 7).slice(-10);
+  const inactiveOwnerEmail = `join-owner-${joinStamp}@company-test.sa`;
+  const inactiveReg = await request(app)
+    .post('/api/auth/register-company')
+    .send({
+      company: { name: `شركة انضمام ${joinStamp}`, cr_number: inactiveCr },
+      owner: { full_name: 'مالك قيد التوثيق', email: inactiveOwnerEmail, password: JOIN_PASSWORD }
+    });
+  const inactiveCompany = await db('companies').where({ id: inactiveReg.body.company && inactiveReg.body.company.id }).first();
+  const inactiveJoin = await join({
+    join_code: inactiveCompany && inactiveCompany.join_code,
+    full_name: 'طالب مبكر',
+    email: `early-${joinStamp}@company-test.sa`,
+    password: JOIN_PASSWORD
+  });
+  check(
+    'شركة جديدة تأخذ رمزها تلقائياً، ولا تقبل انضماماً قبل تفعيلها — بالرسالة نفسها',
+    inactiveReg.status === 201 &&
+      inactiveCompany &&
+      CODE_RE.test(inactiveCompany.join_code) &&
+      inactiveJoin.status === 400 &&
+      inactiveJoin.body.error.message === 'رمز الشركة غير صحيح.',
+    { reg: inactiveReg.status, join: inactiveJoin.body }
+  );
+
+  await request(app)
+    .patch(`/api/companies/${inactiveCompany.id}/verification`)
+    .set(auth(platformJ.token))
+    .send({ status: 'active' });
+  const lateEmail = `join-suspend-${joinStamp}@company-test.sa`;
+  const activeJoin = await join({ join_code: inactiveCompany.join_code, full_name: 'طالب بعد التفعيل', email: lateEmail, password: JOIN_PASSWORD });
+  const suspendCompany = await request(app)
+    .patch(`/api/companies/${inactiveCompany.id}/verification`)
+    .set(auth(platformJ.token))
+    .send({ status: 'suspended', reason: 'فحص إيقاف الشركة' });
+  const lateRow = await db('users').where({ email: lateEmail }).first();
+  const suspendedOwnerRow = await db('users').where({ email: inactiveOwnerEmail }).first();
+  const suspendedJoin = await join({
+    join_code: inactiveCompany.join_code,
+    full_name: 'طالب أثناء الإيقاف',
+    email: `while-suspended-${joinStamp}@company-test.sa`,
+    password: JOIN_PASSWORD
+  });
+  check(
+    'إيقاف الشركة يوقف فريقها ولا يمسّ طلبات الانضمام، ولا تقبل انضماماً وهي موقوفة',
+    activeJoin.status === 201 &&
+      suspendCompany.status === 200 &&
+      suspendedOwnerRow.status === 'suspended' &&
+      lateRow.status === 'join_pending' &&
+      lateRow.role === null &&
+      suspendedJoin.status === 400 &&
+      suspendedJoin.body.error.message === 'رمز الشركة غير صحيح.',
+    { owner: suspendedOwnerRow.status, applicant: lateRow.status, join: suspendedJoin.status }
+  );
+
+  // ── القاعدة نفسها: لا دور فارغ خارج حالتي الانضمام، ولا دور فيهما ──
+  const constraintError = async (row) => {
+    try {
+      await db('users').insert({ email: `constraint-${crypto.randomUUID()}@company-test.sa`, full_name: 'فحص القيد', ...row });
+      return null;
+    } catch (err) {
+      return err.code;
+    }
+  };
+  const roleLessActive = await constraintError({ role: null, status: 'active', company_id: joinCompanyId });
+  const roleWithPending = await constraintError({ role: 'procurement_buyer', status: 'join_pending', company_id: joinCompanyId });
+  const roleLessNoCompany = await constraintError({ role: null, status: 'join_pending' });
+  check(
+    'القاعدة ترفض مستخدماً بلا دور خارج حالتي الانضمام، أو بدور فيهما، أو بلا شركة',
+    roleLessActive === '23514' && roleWithPending === '23514' && roleLessNoCompany === '23514',
+    { roleLessActive, roleWithPending, roleLessNoCompany }
+  );
+
+  // ── محدّد المعدل: عدّاد إنشاء الحسابات نفسه ──
+  setLimitsEnabledForTests(true);
+  try {
+    const joinAttempts = [];
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      joinAttempts.push(await join({}, '203.0.113.226'));
+    }
+    check(
+      'الانضمام محدَّد المعدل: السادس من عنوان واحد يُحجب برسالة المحدّد القائم حرفياً',
+      joinAttempts.slice(0, 5).every((r) => r.status === 400) &&
+        joinAttempts[5].status === 429 &&
+        joinAttempts[5].body.error.message === 'محاولات كثيرة خلال وقت قصير. انتظر قليلاً ثم أعد المحاولة.',
+      { statuses: joinAttempts.map((r) => r.status) }
+    );
+  } finally {
+    setLimitsEnabledForTests(false);
+  }
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

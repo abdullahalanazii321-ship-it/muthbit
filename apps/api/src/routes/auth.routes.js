@@ -9,6 +9,7 @@ const { signToken, requireAuth } = require('../middleware/auth');
 const { badRequest, unauthorized, conflict } = require('../utils/errors');
 const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const passwordReset = require('../services/passwordReset');
+const { INVALID_JOIN_CODE_MESSAGE, normalizeJoinCode } = require('../utils/joinCode');
 
 const router = express.Router();
 
@@ -92,6 +93,104 @@ router.post('/register-company', async (req, res, next) => {
   }
 });
 
+const joinSchema = z.object({
+  join_code: z.string().max(40),
+  full_name: z.string().min(2).max(160),
+  email: z.string().email(),
+  password: passwordSchema
+});
+
+const EMAIL_TAKEN_MESSAGE = 'البريد الإلكتروني مسجّل مسبقاً.';
+
+/**
+ * انضمام موظف إلى شركة برمزها — عام بلا رمز جلسة، ومحدَّد المعدل بعدّاد إنشاء الحسابات نفسه (app.js).
+ *
+ * الحساب يُنشأ بحالة join_pending بلا دور ولا سقف، فلا يدخل حتى يعتمده المالك (companies.routes.js).
+ * الرمز الخاطئ ورمز شركة غير مفعّلة رسالة واحدة لا تكشف عن الشركة شيئاً، والرد لا يحمل من الشركة إلا اسمها.
+ * كلمة المرور بسياسة utils/password.js نفسها بلا تخفيف.
+ *
+ * ومن رُفض طلبه يسجّل من جديد بالبريد نفسه ورمز صالح: يعود صفّه إلى join_pending بالشركة التي رمزها معه،
+ * وتُفرَّغ حقول القرار السابق — فلا يُقفل خطأٌ في الرفض بريدَ الموظف إلى الأبد.
+ * وتتغيّر كلمة مروره إلى الجديدة، فيُزاد session_version في المعاملة نفسها كما في كل مسار يغيّرها.
+ */
+router.post('/join-company', async (req, res, next) => {
+  try {
+    const parsed = joinSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const message = passwordErrorMessage(parsed.error) || 'بيانات الانضمام غير مكتملة أو غير صحيحة.';
+      throw badRequest(message, parsed.error.flatten());
+    }
+
+    const company = await db('companies')
+      .select('id', 'name')
+      .where({ join_code: normalizeJoinCode(parsed.data.join_code), status: 'active' })
+      .first();
+    if (!company) throw badRequest(INVALID_JOIN_CODE_MESSAGE);
+
+    const email = parsed.data.email.toLowerCase().trim();
+    const passwordHash = await bcrypt.hash(parsed.data.password, env.bcryptRounds);
+
+    await db.transaction(async (trx) => {
+      const existing = await trx('users').where({ email }).forUpdate().first();
+      if (existing && existing.status !== 'join_rejected') throw conflict(EMAIL_TAKEN_MESSAGE);
+
+      let user;
+      if (existing) {
+        [user] = await trx('users')
+          .where({ id: existing.id })
+          .update({
+            password_hash: passwordHash,
+            full_name: parsed.data.full_name,
+            company_id: company.id,
+            status: 'join_pending',
+            join_requested_at: trx.fn.now(),
+            join_decided_at: null,
+            join_decided_by: null,
+            join_rejection_reason: null,
+            session_version: trx.raw('session_version + 1'),
+            updated_at: trx.fn.now()
+          })
+          .returning(['id', 'company_id']);
+      } else {
+        [user] = await trx('users')
+          .insert({
+            email,
+            password_hash: passwordHash,
+            full_name: parsed.data.full_name,
+            role: null,
+            status: 'join_pending',
+            company_id: company.id,
+            join_requested_at: trx.fn.now()
+          })
+          .returning(['id', 'company_id']);
+      }
+
+      // الفاعل هو الطالب نفسه بلا دور. الرمز لا يُكتب في السجل أبداً.
+      await audit.record(trx, {
+        actor: { id: user.id, role: null, companyId: company.id },
+        entityType: 'user',
+        entityId: user.id,
+        action: 'user.join_requested',
+        payload: existing
+          ? { reapplied: true, previous_company_id: existing.company_id, previous_rejection_reason: existing.join_rejection_reason }
+          : null,
+        ip: req.ip
+      });
+    }).catch((err) => {
+      // طلبان متزامنان بالبريد نفسه: القيد الفريد يرفض الثاني — بالرسالة نفسها لا برسالة القيد العامة.
+      if (err && err.code === '23505') throw conflict(EMAIL_TAKEN_MESSAGE);
+      throw err;
+    });
+
+    return res.status(201).json({
+      message: 'تم استلام طلب انضمامك. حسابك بانتظار اعتماد الشركة.',
+      company: { name: company.name }
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1)
@@ -112,6 +211,9 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(parsed.data.password, user.password_hash);
     if (!ok) throw generic;
 
+    // بعد التحقق من كلمة المرور لا قبله: من لا يعرفها لا يعرف أن للبريد طلب انضمام.
+    if (user.status === 'join_pending') throw unauthorized('حسابك بانتظار اعتماد الشركة.');
+    if (user.status === 'join_rejected') throw unauthorized('لم يُعتمد طلب انضمامك.');
     if (user.status !== 'active') {
       throw unauthorized('الحساب بانتظار التوثيق أو موقوف. راجع فريق المنصة.');
     }

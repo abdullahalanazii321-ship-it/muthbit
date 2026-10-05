@@ -69,6 +69,8 @@ function createApp() {
   // فالحد على «إنشاء حساب جديد» من هذا العنوان أياً كان نوعه، ولا يُضاعَف بالتنقل بين المسارين.
   app.post('/api/auth/register-company', accountCreationLimiter);
   app.post('/api/suppliers/register', accountCreationLimiter);
+  // والانضمام برمز الشركة إنشاء حساب كذلك: العدّاد نفسه لا عدّاد ثالث.
+  app.post('/api/auth/join-company', accountCreationLimiter);
   // نسيت كلمة المرور بحدّين كالدخول وبالترتيب نفسه (المصدر ثم البريد)، وإعادة التعيين بحدّ المصدر.
   app.post('/api/auth/forgot-password', forgotPasswordLimiter, forgotPasswordEmailLimiter);
   app.post('/api/auth/reset-password', resetPasswordLimiter);

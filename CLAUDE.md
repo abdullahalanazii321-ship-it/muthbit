@@ -7,7 +7,7 @@
 إن غمض شيء: قف واسأل. لا تفترض.
 
 ## المكدّس
-- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٤٥ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
+- `apps/api` — Node 20 + Express + Knex + PostgreSQL 16. **جاهز ومختبر (١٨١ فحصاً). لا تعدّل أي ملف تحته إلا بطلب صريح مني.**
 - `apps/web` — React + Vite + Tailwind. **مبنيّ بالكامل:** ثماني شاشات (الدخول · الطلبات · طلب جديد · تفاصيل الطلب · بوابة المورد · لوحة المنصة · الفريق · سجل التدقيق).
   **كلها تصلح للجوال**، ومعها إنشاء الحساب وصفحة التعريف — قيست عند 360 بكسل (القاعدة ١٠).
   وشاشتا «نسيت كلمة المرور» (`/forgot-password`) و«إعادة التعيين» (`/reset-password#token=…`) بإطار الدخول نفسه.
@@ -39,6 +39,7 @@
 ## المسارات الموجودة — لا تخترع غيرها
 عام بلا رمز: `POST /api/auth/register-company` · `POST /api/auth/login` · `POST /api/suppliers/register` · `GET /health`
 · `POST /api/auth/forgot-password { email }` (ردّ واحد بالحرف دائماً) · `POST /api/auth/reset-password { token, password }`
+· `POST /api/auth/join-company { join_code, full_name, email, password }` (رمز خاطئ أو شركة غير مفعّلة: «رمز الشركة غير صحيح.»)
 
 ```
 GET    /api/auth/me
@@ -57,6 +58,11 @@ POST   /api/companies/:id/users/:userId/suspend
 POST   /api/companies/:id/users/:userId/activate
 GET    /api/companies/:id/buyers/:userId/limits
 PUT    /api/companies/:id/buyers/:userId/limits
+GET    /api/companies/:id/join-code                         (company_owner)
+POST   /api/companies/:id/join-code/rotate                  (company_owner)
+GET    /api/companies/:id/join-requests                     (company_owner)
+POST   /api/companies/:id/join-requests/:userId/approve     (company_owner) { role, per_request_ceiling }
+POST   /api/companies/:id/join-requests/:userId/reject      (company_owner) { reason }
 POST   /api/requests
 GET    /api/requests            ?status=
 GET    /api/requests/:id
@@ -129,7 +135,7 @@ GET    /api/audit
 npm install
 export SEED_PASSWORD='<كلمة تحقّق السياسة>'   # نفسها للبذر وللفحوص
 npm run api:migrate && npm run api:seed
-npm run api:test        # ١٤٥ فحصاً — يجب أن تمر كلها
+npm run api:test        # ١٨١ فحصاً — يجب أن تمر كلها
 ```
 `npm run api:test` **يغيّر بيانات العرض**. بعده شغّل `npm run reset` داخل `apps/api` قبل بناء أي واجهة عليها.
 

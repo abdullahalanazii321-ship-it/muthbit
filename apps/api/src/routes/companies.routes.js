@@ -9,6 +9,7 @@ const { requireAuth, requireRole, scopeToCompany, resolvePlatformCompany } = req
 const { requireReason } = require('../utils/reason');
 const { passwordSchema, passwordErrorMessage } = require('../utils/password');
 const { badRequest, notFound, forbidden, conflict } = require('../utils/errors');
+const { JOIN_STATUSES, generateJoinCode } = require('../utils/joinCode');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -83,7 +84,12 @@ router.patch('/:id/verification', requireRole('platform_admin'), async (req, res
           .update({ status: 'active', updated_at: trx.fn.now() });
       }
       if (parsed.data.status === 'suspended') {
-        await trx('users').where({ company_id: company.id }).update({ status: 'suspended', updated_at: trx.fn.now() });
+        // طالبو الانضمام (join_pending · join_rejected) ليسوا من الفريق بعد ولا يدخلون أصلاً — فلا يمسّهم الإيقاف،
+        // وإلا ضاع طلبٌ لم يُبتّ فيه وصار صاحبه «موقوفاً» بلا دور.
+        await trx('users')
+          .where({ company_id: company.id })
+          .whereNotIn('status', JOIN_STATUSES)
+          .update({ status: 'suspended', updated_at: trx.fn.now() });
       }
 
       await audit.record(trx, {
@@ -113,7 +119,11 @@ router.get('/:id/users', requireRole('company_owner', 'finance_manager', 'procur
       ? await resolvePlatformCompany(req.params.id, 'مسؤول المنصة يقرأ مستخدمي شركة محددة — حدّد الشركة.')
       : null;
     const rows = await scopeToCompany(
-      db('users').select('id', 'email', 'full_name', 'role', 'status', 'created_at').where({ company_id: req.params.id }),
+      // طالبو الانضمام والمرفوضون ليسوا من الفريق: مكانهم مسار طلبات الانضمام وحده.
+      db('users')
+        .select('id', 'email', 'full_name', 'role', 'status', 'created_at')
+        .where({ company_id: req.params.id })
+        .whereNotIn('status', JOIN_STATUSES),
       req.user,
       'company_id',
       platformCompanyId
@@ -195,7 +205,11 @@ router.put('/:id/buyers/:userId/limits', requireRole('company_owner', 'finance_m
     const parsed = limitsSchema.safeParse(req.body);
     if (!parsed.success) throw badRequest('بيانات السقف غير صحيحة.', parsed.error.flatten());
 
-    const buyer = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
+    // طالب الانضمام لا يُعامَل مشترياً: بلا دور فلا سقف — يُضبط سقفه عند اعتماده لا قبله.
+    const buyer = await db('users')
+      .where({ id: req.params.userId, company_id: req.user.companyId })
+      .whereNotIn('status', JOIN_STATUSES)
+      .first();
     if (!buyer) throw notFound('المستخدم غير موجود في هذه الشركة.');
 
     if (parsed.data.approver_user_id) {
@@ -265,7 +279,11 @@ router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_
   try {
     if (req.params.id !== req.user.companyId) throw forbidden();
     const reason = requireReason(req.body && req.body.reason, 'الإيقاف يحتاج سبباً مكتوباً.');
-    const target = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
+    // طالب الانضمام ليس من الفريق: لا يُوقف ولا يُفعَّل — يُعتمد أو يُرفض من مسار طلبات الانضمام.
+    const target = await db('users')
+      .where({ id: req.params.userId, company_id: req.user.companyId })
+      .whereNotIn('status', JOIN_STATUSES)
+      .first();
     if (!target) throw notFound('المستخدم غير موجود في هذه الشركة.');
     if (target.id === req.user.id) throw badRequest('لا يمكنك إيقاف حسابك بنفسك.');
     // الإيقاف يلغي طلبات صاحبه المفتوحة؛ فلا يُجمَّد المالك إلا بيد مالك.
@@ -309,7 +327,11 @@ router.post('/:id/users/:userId/suspend', requireRole('company_owner', 'finance_
 router.post('/:id/users/:userId/activate', requireRole('company_owner', 'finance_manager'), async (req, res, next) => {
   try {
     if (req.params.id !== req.user.companyId) throw forbidden();
-    const target = await db('users').where({ id: req.params.userId, company_id: req.user.companyId }).first();
+    // طالب الانضمام ليس من الفريق: لا يُوقف ولا يُفعَّل — يُعتمد أو يُرفض من مسار طلبات الانضمام.
+    const target = await db('users')
+      .where({ id: req.params.userId, company_id: req.user.companyId })
+      .whereNotIn('status', JOIN_STATUSES)
+      .first();
     if (!target) throw notFound('المستخدم غير موجود في هذه الشركة.');
     // نفس قيد الإيقاف: حساب المالك لا يُمَسّ إلا بيد مالك. التحقق قبل الحالة،
     // فمن لا يملك الإجراء لا يُعلَّم بحالة الحساب.
@@ -332,6 +354,187 @@ router.post('/:id/users/:userId/activate', requireRole('company_owner', 'finance
     });
 
     return res.json({ message: 'أُعيد تفعيل الحساب. لا يعود سقفه المعطَّل ولا طلباته الملغاة.' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* ───────────── انضمام الموظفين برمز الشركة — للمالك وحده ─────────────
+ * الموظف يسجّل بنفسه بالرمز (POST /api/auth/join-company) فيُنشأ بحالة join_pending بلا دور ولا سقف.
+ * المالك وحده يقرأ الرمز ويبدّله ويعتمد أو يرفض: المدير المالي يضبط السقوف ويوقف، لكنه لا يُدخل أحداً إلى الشركة.
+ * الشركة في المسار يجب أن تكون شركة المالك، والطلب يجب أن يكون في شركته — يُتحقق هنا لا في الواجهة.
+ */
+
+const ownerOfCompany = (req) => {
+  if (req.params.id !== req.user.companyId) throw forbidden();
+};
+
+/** رمز الانضمام الحالي. */
+router.get('/:id/join-code', requireRole('company_owner'), async (req, res, next) => {
+  try {
+    ownerOfCompany(req);
+    const company = await db('companies').select('join_code', 'join_code_updated_at').where({ id: req.user.companyId }).first();
+    if (!company) throw notFound('الشركة غير موجودة.');
+    return res.json({ join_code: company.join_code, join_code_updated_at: company.join_code_updated_at });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * رمز جديد: القديم يبطل في اللحظة نفسها (الصف واحد والرمز عمود فيه).
+ * السجل يقول إن الرمز بُدّل ولا يكتب الرمز — لا القديم ولا الجديد.
+ * التصادم مع رمز شركة أخرى احتمال واحد في تريليون؛ القيد الفريد يرفضه فنولّد غيره.
+ */
+router.post('/:id/join-code/rotate', requireRole('company_owner'), async (req, res, next) => {
+  try {
+    ownerOfCompany(req);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const joinCode = generateJoinCode();
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const row = await db.transaction(async (trx) => {
+          const [updated] = await trx('companies')
+            .where({ id: req.user.companyId })
+            .update({ join_code: joinCode, join_code_updated_at: trx.fn.now(), updated_at: trx.fn.now() })
+            .returning(['join_code', 'join_code_updated_at']);
+          if (!updated) throw notFound('الشركة غير موجودة.');
+          await audit.record(trx, {
+            actor: req.user,
+            entityType: 'company',
+            entityId: req.user.companyId,
+            action: 'company.join_code_rotated',
+            ip: req.ip
+          });
+          return updated;
+        });
+        return res.json({ join_code: row.join_code, join_code_updated_at: row.join_code_updated_at });
+      } catch (err) {
+        if (!(err && err.code === '23505')) throw err;
+      }
+    }
+    throw new Error('تعذّر توليد رمز انضمام فريد بعد خمس محاولات.');
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** طلبات الانضمام المعلّقة في شركة المالك: الاسم والبريد ووقت الطلب لا غير. */
+router.get('/:id/join-requests', requireRole('company_owner'), async (req, res, next) => {
+  try {
+    ownerOfCompany(req);
+    const requests = await db('users')
+      .select('id', 'full_name', 'email', 'join_requested_at')
+      .where({ company_id: req.user.companyId, status: 'join_pending' })
+      .orderBy('join_requested_at', 'asc');
+    return res.json({ requests });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * الطلب المعلّق في شركة المالك نفسها، مقفلاً حتى نهاية المعاملة: قراران متزامنان لا ينجحان معاً.
+ * غيره — في شركة أخرى، أو بُتّ فيه، أو ليس طلباً أصلاً — «غير موجود»: لا يُعلَم بوجود حساب في شركة أخرى.
+ */
+async function pendingJoinRequest(trx, req) {
+  const user = await trx('users')
+    .where({ id: req.params.userId, company_id: req.user.companyId, status: 'join_pending' })
+    .forUpdate()
+    .first();
+  if (!user) throw notFound('طلب الانضمام غير موجود أو بُتّ فيه.');
+  return user;
+}
+
+// الدوران الوحيدان عبر الرمز العام. لا مالك ولا مسؤول منصة، ولا مدير مالي: من يدخل برمز عام
+// لا يُرفع إلى دور مالي بخطوة واحدة — المالك ينشئ المدير المالي من مسار الإضافة المباشرة.
+const JOIN_ASSIGNABLE_ROLES = ['procurement_buyer', 'procurement_manager'];
+
+const missing = (value) => value === undefined || value === null || value === '';
+
+/**
+ * اعتماد طلب انضمام: الدور والسقف إلزاميان، ويصير الحساب فعّالاً بهما في معاملة واحدة.
+ * السقف هو per_request_ceiling؛ والسقف الشهري والفئات والمعتمِد تبقى فارغة يكملها المالك من مسار الحدود.
+ */
+router.post('/:id/join-requests/:userId/approve', requireRole('company_owner'), async (req, res, next) => {
+  try {
+    ownerOfCompany(req);
+    const body = req.body || {};
+    if (missing(body.role)) throw badRequest('حدّد الدور عند اعتماد طلب الانضمام.');
+    if (!JOIN_ASSIGNABLE_ROLES.includes(body.role)) {
+      throw badRequest('الدور المحدد لا يُسند عبر طلب الانضمام. المتاح: موظف المشتريات أو مدير المشتريات.');
+    }
+    if (missing(body.per_request_ceiling)) throw badRequest('حدّد سقف الطلب الواحد عند اعتماد طلب الانضمام.');
+    const ceiling = z.number().nonnegative().safeParse(body.per_request_ceiling);
+    if (!ceiling.success) throw badRequest('سقف الطلب الواحد يجب أن يكون رقماً لا يقل عن صفر.');
+
+    const result = await db.transaction(async (trx) => {
+      const user = await pendingJoinRequest(trx, req);
+      const [approved] = await trx('users')
+        .where({ id: user.id })
+        .update({
+          role: body.role,
+          status: 'active',
+          join_decided_at: trx.fn.now(),
+          join_decided_by: req.user.id,
+          join_rejection_reason: null,
+          updated_at: trx.fn.now()
+        })
+        .returning(['id', 'email', 'full_name', 'role', 'status']);
+      const [limits] = await trx('buyer_limits')
+        .insert({
+          company_id: req.user.companyId,
+          user_id: user.id,
+          per_request_ceiling: ceiling.data,
+          set_by_user_id: req.user.id
+        })
+        .returning(['per_request_ceiling', 'monthly_ceiling']);
+
+      await audit.record(trx, {
+        actor: req.user,
+        entityType: 'user',
+        entityId: user.id,
+        action: 'user.join_approved',
+        payload: { role: body.role, per_request_ceiling: ceiling.data, requested_at: user.join_requested_at },
+        ip: req.ip
+      });
+      return { user: approved, limits };
+    });
+
+    return res.json({ message: 'اعتُمد طلب الانضمام وصار الحساب فعّالاً.', ...result });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** رفض طلب انضمام — السبب إلزامي بقاعدة الرفض نفسها في المنصة كلها (utils/reason.js) ونصها. */
+router.post('/:id/join-requests/:userId/reject', requireRole('company_owner'), async (req, res, next) => {
+  try {
+    ownerOfCompany(req);
+    const reason = requireReason(req.body && req.body.reason, 'الرفض يحتاج سبباً مكتوباً.');
+
+    await db.transaction(async (trx) => {
+      const user = await pendingJoinRequest(trx, req);
+      await trx('users')
+        .where({ id: user.id })
+        .update({
+          status: 'join_rejected',
+          join_decided_at: trx.fn.now(),
+          join_decided_by: req.user.id,
+          join_rejection_reason: reason,
+          updated_at: trx.fn.now()
+        });
+      await audit.record(trx, {
+        actor: req.user,
+        entityType: 'user',
+        entityId: user.id,
+        action: 'user.join_rejected',
+        payload: { reason, requested_at: user.join_requested_at },
+        ip: req.ip
+      });
+    });
+
+    return res.json({ message: 'رُفض طلب الانضمام.' });
   } catch (err) {
     return next(err);
   }
