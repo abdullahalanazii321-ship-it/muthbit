@@ -36,6 +36,17 @@ export function homeFor(user) {
   return COMPANY_HOME;
 }
 
+/** اسم كل صفحة أولى كما يظهر في القائمة الجانبية — ويُقرأ منه زر «العودة إلى …» في صفحة 404. */
+export const HOME_LABELS = {
+  [COMPANY_HOME]: 'الطلبات',
+  [SUPPLIER_HOME]: 'بوابة المورد',
+  [PLATFORM_HOME]: 'لوحة المنصة'
+};
+
+export function homeLabelFor(user) {
+  return HOME_LABELS[homeFor(user)];
+}
+
 export const ACCESS_LOG_PATH = '/platform/access-log';
 export const PLATFORM_ADMINS_PATH = '/platform/admins';
 

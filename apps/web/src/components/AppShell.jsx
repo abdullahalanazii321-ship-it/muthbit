@@ -5,6 +5,10 @@ import {
   ACCESS_LOG_PATH,
   PLATFORM_ADMINS_PATH,
   canCreateRequest,
+  COMPANY_HOME,
+  HOME_LABELS,
+  PLATFORM_HOME,
+  SUPPLIER_HOME,
   canManagePlatform,
   canViewAccessLog,
   canViewAudit,
@@ -142,10 +146,10 @@ const isRequestsPath = (path) => path === '/requests' || (path.startsWith('/requ
 
 function NavLinks({ user, pathname, onNavigate, className = '' }) {
   const links = [
-    canViewRequests(user) && { to: '/requests', label: 'الطلبات', active: isRequestsPath(pathname) },
+    canViewRequests(user) && { to: COMPANY_HOME, label: HOME_LABELS[COMPANY_HOME], active: isRequestsPath(pathname) },
     canCreateRequest(user) && { to: '/requests/new', label: 'طلب جديد', active: pathname === '/requests/new' },
-    canViewSupplierPortal(user) && { to: '/supplier', label: 'بوابة المورد', active: pathname === '/supplier' },
-    canViewPlatform(user) && { to: '/platform', label: 'لوحة المنصة', active: pathname === '/platform' },
+    canViewSupplierPortal(user) && { to: SUPPLIER_HOME, label: HOME_LABELS[SUPPLIER_HOME], active: pathname === SUPPLIER_HOME },
+    canViewPlatform(user) && { to: PLATFORM_HOME, label: HOME_LABELS[PLATFORM_HOME], active: pathname === PLATFORM_HOME },
     canViewTeam(user) && { to: '/team', label: 'الفريق', active: pathname === '/team' },
     canViewAudit(user) && { to: '/audit', label: 'سجل التدقيق', active: pathname === '/audit' }
   ].filter(Boolean);

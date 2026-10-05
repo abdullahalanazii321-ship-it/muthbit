@@ -1024,7 +1024,7 @@ const CTA_VARIANTS = {
   outline: 'border-mkt-line-strong text-mkt-paper hover:border-mkt-mint'
 };
 
-function CtaLink({ to, variant = 'mint', children }) {
+export function CtaLink({ to, variant = 'mint', children }) {
   return (
     <Link
       to={to}
