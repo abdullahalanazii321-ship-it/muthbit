@@ -68,6 +68,9 @@
   /* الشعار على الصفحة العامة: أحادي نعناعي فوق الداكن، وبلونيه المعتمدين فوق الفاتح. */
   --mb-mkt-logo-body: #54C3A8;
   --mb-mkt-logo-accent: #54C3A8;
+  /* البطاقة المرفوعة في صفحة التعريف (.mb-glow-card): توهّج الحلقة النعناعية، والظل العميق تحتها. */
+  --mb-mkt-glow: rgba(84, 195, 168, 0.35);
+  --mb-mkt-shadow: rgba(0, 0, 0, 0.5);
 
   /* --- الخطوط --- */
   --mb-font-display: 'Noto Kufi Arabic', 'Archivo', system-ui, sans-serif;
@@ -79,6 +82,10 @@
   --mb-radius-sm: 4px;
   --mb-radius: 6px;
   --mb-measure: 66ch;
+
+  /* --- الحركة --- */
+  /* خروج سريع يهدأ في آخره — انتقالات صفحة التعريف (البطاقات والمشهد البطل). */
+  --mb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -136,13 +143,16 @@
   --mb-mkt-mint: #0B4F4A;
   --mb-mkt-paper: #10201D;
   --mb-mkt-muted: #4D5C57;
-  --mb-mkt-sand: #7A6431;
+  /* كلمة «معتمد» في المشهد البطل على شارتها: ٤٫٥١ بـ #7A6431 — على الحدّ تماماً، فأُغمق. */
+  --mb-mkt-sand: #6E5A2B;
   --mb-mkt-field-line: rgba(11, 79, 74, 0.6);
   /* قيمة --mb-signal الفاتح نفسها: ٤٫٨ على أرضيته الناعمة. */
   --mb-mkt-signal: #A04A15;
   --mb-mkt-signal-soft: #F0E3D8;
   --mb-mkt-logo-body: #0B4F4A;
   --mb-mkt-logo-accent: #12857A;
+  --mb-mkt-glow: rgba(11, 79, 74, 0.22);
+  --mb-mkt-shadow: rgba(16, 32, 29, 0.18);
   color-scheme: light;
 }
 

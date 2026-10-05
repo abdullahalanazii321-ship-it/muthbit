@@ -11,3 +11,152 @@
     @apply bg-ground text-ink font-body leading-body;
   }
 }
+
+/* =========================================================
+   صفحة التعريف — المشهد البطل (HeroScene في LandingPage.jsx)
+   دورة واحدة سبع ثوانٍ تتكرّر. كل عنصر مفاتيحه بنسب مطلقة من الدورة نفسها —
+   لا animation-delay: التأخير يزيح الدورة كلها، فيظهر السطر قبل أن يُكتب حين تبدأ الدورة التالية.
+   الحالة الأساسية لكل عنصر (بلا حركة) هي حالته النهائية: فيكفي إلغاء الحركة لتقليل الحركة.
+   الإحداثيات في SVG فيزيائية؛ transform-box: fill-box يجعل المركز مركز العنصر نفسه.
+   ========================================================= */
+.mb-hero-scene {
+  animation: mb-hero-fade 7s linear infinite;
+}
+.mb-hero-card,
+.mb-hero-line,
+.mb-hero-seal,
+.mb-hero-ring,
+.mb-hero-badge {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-duration: 7s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* المشهد يثبت ثم يتلاشى (٨٨٪ ← ٩٦٪)، ويبدأ من جديد. */
+@keyframes mb-hero-fade {
+  0%, 88% { opacity: 1; }
+  96%, 100% { opacity: 0; }
+}
+
+/* البطاقات الثلاث تصعد من الأسفل تباعاً: ٠٪ · ٢٪ · ٤٪، كل واحدة ١٠٪ من الدورة. */
+.mb-hero-card-1 { animation-name: mb-hero-card-1; }
+.mb-hero-card-2 { animation-name: mb-hero-card-2; }
+.mb-hero-card-3 { animation-name: mb-hero-card-3; }
+@keyframes mb-hero-card-1 {
+  0% { opacity: 0; transform: translateY(48px); animation-timing-function: var(--mb-ease-out); }
+  10%, 100% { opacity: 1; transform: none; }
+}
+@keyframes mb-hero-card-2 {
+  0%, 2% { opacity: 0; transform: translateY(48px); animation-timing-function: var(--mb-ease-out); }
+  12%, 100% { opacity: 1; transform: none; }
+}
+@keyframes mb-hero-card-3 {
+  0%, 4% { opacity: 0; transform: translateY(48px); animation-timing-function: var(--mb-ease-out); }
+  14%, 100% { opacity: 1; transform: none; }
+}
+
+/* الأسطر تُكتب من جهة البداية واحداً تلو الآخر: من ٨٪ كل ١٫٣٪، وكل سطر ٤٪.
+   الأصل 100% 50%: الحافة اليمنى في إحداثيات الرسم الفيزيائية (لا خصائص منطقية في SVG)؛
+   والرسم كله معكوس في الإنجليزية فيصير الأصل يساراً، فيُكتب السطر مع اتجاه القراءة في اللغتين. */
+.mb-hero-line { transform-origin: 100% 50%; }
+.mb-hero-line-1 { animation-name: mb-hero-line-1; }
+.mb-hero-line-2 { animation-name: mb-hero-line-2; }
+.mb-hero-line-3 { animation-name: mb-hero-line-3; }
+.mb-hero-line-4 { animation-name: mb-hero-line-4; }
+.mb-hero-line-5 { animation-name: mb-hero-line-5; }
+.mb-hero-line-6 { animation-name: mb-hero-line-6; }
+@keyframes mb-hero-line-1 { 0%, 8% { transform: scaleX(0); animation-timing-function: ease-out; } 12%, 100% { transform: scaleX(1); } }
+@keyframes mb-hero-line-2 { 0%, 9.3% { transform: scaleX(0); animation-timing-function: ease-out; } 13.3%, 100% { transform: scaleX(1); } }
+@keyframes mb-hero-line-3 { 0%, 10.6% { transform: scaleX(0); animation-timing-function: ease-out; } 14.6%, 100% { transform: scaleX(1); } }
+@keyframes mb-hero-line-4 { 0%, 11.9% { transform: scaleX(0); animation-timing-function: ease-out; } 15.9%, 100% { transform: scaleX(1); } }
+@keyframes mb-hero-line-5 { 0%, 13.2% { transform: scaleX(0); animation-timing-function: ease-out; } 17.2%, 100% { transform: scaleX(1); } }
+@keyframes mb-hero-line-6 { 0%, 14.5% { transform: scaleX(0); animation-timing-function: ease-out; } 18.5%, 100% { transform: scaleX(1); } }
+
+/* الختم ينزل مكبّراً ويُطبع بارتداد خفيف (١٨٪ ← ٢٧٪). */
+.mb-hero-seal { animation-name: mb-hero-seal; }
+@keyframes mb-hero-seal {
+  0%, 18% { opacity: 0; transform: scale(1.9); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  23% { opacity: 1; transform: scale(0.92); animation-timing-function: ease-out; }
+  27%, 100% { opacity: 1; transform: scale(1); }
+}
+
+/* حلقة واحدة تنتشر من حدود الختم وتتلاشى (٢٥٪ ← ٣٨٪). أساسها مخفية: في الحالة النهائية لا حلقة. */
+.mb-hero-ring { opacity: 0; animation-name: mb-hero-ring; }
+@keyframes mb-hero-ring {
+  0%, 25% { opacity: 0; transform: scale(1); }
+  25.5% { opacity: 0.8; transform: scale(1); animation-timing-function: ease-out; }
+  38%, 100% { opacity: 0; transform: scale(1.75); }
+}
+
+/* علامة الصح تُرسم بخطّها (٢٦٪ ← ٣٣٪). pathLength="1" على المسار، فالطول واحد أيّاً كان شكله. */
+.mb-hero-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: mb-hero-check 7s linear infinite;
+}
+@keyframes mb-hero-check {
+  0%, 26% { stroke-dashoffset: 1; animation-timing-function: ease-in-out; }
+  33%, 100% { stroke-dashoffset: 0; }
+}
+
+/* شارة «معتمد» تظهر بعد اكتمال علامة الصح (٣٣٪ ← ٣٨٪): الاعتماد نتيجة الختم لا قبله. */
+.mb-hero-badge { animation-name: mb-hero-badge; }
+@keyframes mb-hero-badge {
+  0%, 33% { opacity: 0; transform: scale(0.6); animation-timing-function: var(--mb-ease-out); }
+  38%, 100% { opacity: 1; transform: scale(1); }
+}
+
+/* تقليل الحركة: لا حركة إطلاقاً، والمشهد في حالته النهائية كاملاً — الختم مطبوع وعلامة الصح مرسومة. */
+@media (prefers-reduced-motion: reduce) {
+  .mb-hero-scene,
+  .mb-hero-scene * {
+    animation: none !important;
+  }
+}
+
+/* =========================================================
+   صفحة التعريف — البطاقة المرفوعة (.mb-glow-card)
+   عند المرور واللمس (:active) والتركيز (:focus-within، والبطاقة نفسها tabindex="0"):
+   ترتفع ١٠ بكسل، ويختفي حدّها وتحلّ محلّه حلقة نعناعية ٢ بكسل بتوهّج ناعم وظل أعمق،
+   ومربّع الأيقونة يمتلئ بالنعناعي والأيقونة بلون الأرضية.
+   outline: none لأن الحلقة نفسها هي مؤشّر التركيز — فلا يفقد مستخدم لوحة المفاتيح موضعه.
+   ========================================================= */
+.mb-glow-card {
+  outline: none;
+  transition:
+    transform 260ms var(--mb-ease-out),
+    box-shadow 260ms var(--mb-ease-out),
+    border-color 260ms var(--mb-ease-out);
+}
+.mb-glow-card:is(:hover, :focus-within, :active) {
+  transform: translateY(-10px);
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--mb-mkt-mint),
+    0 0 28px 2px var(--mb-mkt-glow),
+    0 22px 44px -12px var(--mb-mkt-shadow);
+}
+.mb-glow-card .mb-card-icon {
+  transition:
+    background-color 260ms var(--mb-ease-out),
+    border-color 260ms var(--mb-ease-out),
+    color 260ms var(--mb-ease-out);
+}
+.mb-glow-card:is(:hover, :focus-within, :active) .mb-card-icon {
+  background-color: var(--mb-mkt-mint);
+  border-color: var(--mb-mkt-mint);
+  color: var(--mb-mkt-ground);
+}
+
+/* تقليل الحركة: تبقى الحلقة وتغيّر اللون، ويُلغى الرفع والانتقال. */
+@media (prefers-reduced-motion: reduce) {
+  .mb-glow-card,
+  .mb-glow-card .mb-card-icon {
+    transition: none;
+  }
+  .mb-glow-card:is(:hover, :focus-within, :active) {
+    transform: none;
+  }
+}

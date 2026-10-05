@@ -55,6 +55,7 @@ const COPY = {
     nav: { label: 'أقسام الصفحة', signIn: 'تسجيل الدخول' },
     sections: { features: 'المميزات', parties: 'الأطراف', how: 'كيف تعمل' },
     hero: {
+      scene: { label: 'مستند شراء يصعد ويُختم بختم مثبت ويُعتمد', badge: 'معتمد' },
       chip: 'منصة مشتريات موثّقة',
       lines: ['الشراء يمرّ', 'بقواعد شركتك', 'لا من حولها.'],
       lede: 'مثبت تضع سقف الإنفاق لكل مشترٍ، وتُلزم كل طلب بموافقة من غير صاحبه، وتكتب كل خطوة في سجل لا يقبل التعديل — وتفتح الباب لموردين لا يظهرون قبل التحقق منهم.',
@@ -195,6 +196,7 @@ const COPY = {
         'Muthbit sets a spending ceiling for every buyer, requires every request to be approved by someone other than its author, and writes every step into a log that cannot be edited — with suppliers who do not appear until they have been verified.'
     },
     hero: {
+      scene: { label: 'A purchase document rises, is stamped with the Muthbit seal, and is approved', badge: 'Approved' },
       chip: 'Verified procurement platform',
       lines: ['Purchasing that runs', 'through your rules', 'not around them.'],
       lede: 'Muthbit sets a spending ceiling for every buyer, requires every request to be approved by someone other than its author, and writes every step into a log that cannot be edited — with suppliers who do not appear until they have been verified.',
@@ -494,13 +496,13 @@ function Hero() {
   );
 }
 
-/** الرسم زخرفة لا محتوى: يُخفى عن قارئ الشاشة، ويختفي كلياً تحت 900 بكسل بدل أن ينضغط. */
+/** المشهد البطل في إطاره مع شارتي الزاويتين. يظهر في كل المقاسات ويتقلّص مع العرض (كان يختفي تحت 900 بكسل). */
 function HeroVisual() {
   const { t } = useLanding();
   return (
-    <div className="hidden min-[900px]:block">
+    <div>
       <div className="relative overflow-hidden rounded-2xl border border-mkt-line bg-gradient-to-b from-mkt-surface to-mkt-ground-2 px-8 py-16">
-        <HeroArt />
+        <HeroScene />
         {/* start و end تنقلبان مع الاتجاه: أعلى اليمين وأسفل اليسار في العربية، والعكس في الإنجليزية. */}
         <Chip className="absolute start-5 top-5" icon={<LockIcon />}>
           {t.chips.log}
@@ -513,93 +515,113 @@ function HeroVisual() {
   );
 }
 
-// إحداثيات SVG فيزيائية لا تنعكس مع الاتجاه، فتُعكس السلسلة هنا يدوياً:
-// تقرأ مع اتجاه القراءة، والخطوة المنجزة أولاً — يميناً في العربية ويساراً في الإنجليزية.
-const TIMELINE_X = { rtl: [330, 210, 90], ltr: [90, 210, 330] };
-const TIMELINE_DONE = [true, true, false];
+/**
+ * المشهد البطل: مستند شراء يصعد ويُكتب ويُختم ويُعتمد — دورة سبع ثوانٍ تتكرّر (الحركة كلها في index.css).
+ * SVG مضمّن، وكل لون من رموز --mb-mkt-* فيتبع الوضع الفاتح والداكن بلا تعديل.
+ * لا نص فيه إلا كلمة الشارة: النص المختلط داخل SVG يختلّ ترتيبه، فالأسطر مستطيلات مجرّدة.
+ *
+ * الإحداثيات مرسومة للعربية: الأسطر تبدأ من اليمين، والشارة أعلى يسار البطاقة الأمامية، والختم على زاويتها
+ * السفلى اليسرى (نهاية السطر). في الإنجليزية يُعكس الرسم كله أفقياً فيصير كل شيء مع اتجاه القراءة،
+ * وتُعكس كلمة الشارة مرة ثانية لتُقرأ.
+ *
+ * viewBox يبدأ من y=24: أعلى البطاقة الخلفية فراغ لا يُرسم فيه شيء، وأسفله يحتاج المتّسع —
+ * الختم وهو ينزل مكبّراً (٢٠٪) والحلقة وهي تنتشر (٣٤٪) كانا يُقصّان من الأسفل حتى ١٠ وحدات.
+ */
+const HERO_LINES = [
+  { width: 132, height: 12, opacity: 0.9 },
+  { width: 210, height: 8, opacity: 0.55 },
+  { width: 176, height: 8, opacity: 0.45 },
+  { width: 222, height: 8, opacity: 0.4 },
+  { width: 150, height: 8, opacity: 0.35 },
+  { width: 104, height: 8, opacity: 0.3 }
+];
+// الحافة اليمنى للأسطر داخل البطاقة الأمامية (x=70 · العرض 270)، وموضع أول سطر وما بين الأسطر.
+const LINE_END = 316;
+const LINE_TOP = 162;
+const LINE_GAP = 20;
 
-function HeroArt() {
+/** رؤوس مثمّن نصف قطره r حول (0,0)، بضلع مستقيم في الأعلى كمثمّن شعار مثبت. */
+const octagon = (r) =>
+  Array.from({ length: 8 }, (_, i) => {
+    const a = ((22.5 + i * 45) * Math.PI) / 180;
+    return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`;
+  }).join(' ');
+
+function HeroScene() {
   const { t } = useLanding();
-  const timeline = TIMELINE_X[t.dir].map((cx, index) => ({ cx, done: TIMELINE_DONE[index] }));
+  const scene = t.hero.scene;
+  const mirrored = t.dir === 'ltr';
   return (
-    <svg viewBox="0 0 420 356" className="h-auto w-full" aria-hidden="true" focusable="false">
+    <svg viewBox="0 24 420 370" className="h-auto w-full" role="img" aria-label={scene.label}>
       <defs>
-        <linearGradient id="mb-hero-front-card" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id="mb-hero-front" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="var(--mb-mkt-surface-2)" />
           <stop offset="1" stopColor="var(--mb-mkt-surface)" />
         </linearGradient>
       </defs>
 
-      {/* بطاقتان خلفيتان تطلّان من فوق الأمامية */}
-      <rect x="90" y="36" width="240" height="190" rx="14" fill="var(--mb-mkt-ground-2)" stroke="var(--mb-mkt-line)" />
-      <rect x="75" y="58" width="270" height="190" rx="14" fill="var(--mb-mkt-surface)" stroke="var(--mb-mkt-line)" />
+      <g className="mb-hero-scene" transform={mirrored ? 'translate(420 0) scale(-1 1)' : undefined}>
+        {/* البطاقات الثلاث مائلة سبع درجات حول مركز المشهد. الدوران على الغلاف، والصعود (CSS) على ما بداخله:
+            transform في CSS يحلّ محلّ سمة transform فلا يجتمعان على عنصر واحد. */}
+        <g transform="rotate(-7 210 185)">
+          <g className="mb-hero-card mb-hero-card-1">
+            <rect x="100" y="58" width="230" height="172" rx="14" fill="var(--mb-mkt-surface)" stroke="var(--mb-mkt-line)" opacity="0.7" />
+          </g>
+          <g className="mb-hero-card mb-hero-card-2">
+            <rect x="85" y="80" width="250" height="180" rx="15" fill="var(--mb-mkt-surface)" stroke="var(--mb-mkt-line)" />
+          </g>
+          <g className="mb-hero-card mb-hero-card-3">
+            <rect x="70" y="104" width="270" height="196" rx="16" fill="url(#mb-hero-front)" stroke="var(--mb-mkt-line-strong)" />
+            {HERO_LINES.map((line, index) => (
+              <rect
+                key={index}
+                className={`mb-hero-line mb-hero-line-${index + 1}`}
+                x={LINE_END - line.width}
+                y={LINE_TOP + index * LINE_GAP - (index === 0 ? 12 : 0)}
+                width={line.width}
+                height={line.height}
+                rx={line.height / 2}
+                fill="var(--mb-mkt-muted)"
+                opacity={line.opacity}
+              />
+            ))}
+            {/* شارة «معتمد» أعلى يسار البطاقة الأمامية. */}
+            <g className="mb-hero-badge">
+              <rect x="88" y="122" width="82" height="28" rx="14" fill="var(--mb-mkt-sand)" fillOpacity="0.14" stroke="var(--mb-mkt-sand)" />
+              <text
+                x="129"
+                y="141"
+                textAnchor="middle"
+                fontSize="13"
+                fontWeight="600"
+                fill="var(--mb-mkt-sand)"
+                transform={mirrored ? 'translate(258 0) scale(-1 1)' : undefined}
+              >
+                {scene.badge}
+              </text>
+            </g>
+          </g>
+        </g>
 
-      {/* الأمامية: أكبر وأفتح بتدرّج */}
-      <rect
-        x="60"
-        y="80"
-        width="300"
-        height="190"
-        rx="16"
-        fill="url(#mb-hero-front-card)"
-        stroke="var(--mb-mkt-line-strong)"
-      />
-
-      {/* العنوان والمرجع — أعلى اليمين */}
-      <rect x="216" y="104" width="120" height="10" rx="5" fill="var(--mb-mkt-paper)" opacity="0.85" />
-      <rect x="264" y="124" width="72" height="8" rx="4" fill="var(--mb-mkt-muted)" opacity="0.75" />
-
-      {/* التفاصيل: ثلاثة أسطر رمادية متدرّجة الطول */}
-      <rect x="96" y="156" width="240" height="7" rx="3.5" fill="var(--mb-mkt-muted)" opacity="0.4" />
-      <rect x="136" y="174" width="200" height="7" rx="3.5" fill="var(--mb-mkt-muted)" opacity="0.4" />
-      <rect x="186" y="192" width="150" height="7" rx="3.5" fill="var(--mb-mkt-muted)" opacity="0.4" />
-
-      {/* المبلغ: كبسولة بحدّ نعناعي وشريط نعناعي بداخلها — أسفل اليمين */}
-      <rect
-        x="226"
-        y="222"
-        width="110"
-        height="28"
-        rx="14"
-        fill="var(--mb-mkt-ground-2)"
-        stroke="var(--mb-mkt-mint)"
-        strokeWidth="1.5"
-      />
-      <rect x="242" y="233" width="78" height="6" rx="3" fill="var(--mb-mkt-mint)" />
-
-      {/* ختم مثبت مائلاً فوق الحافة اليسرى العليا للأمامية، وخلفه هالة داكنة شفافة تفصله عنها.
-          الشعار نفسه (Logo) أحادياً بلون surface على قرص الختم — لا نسخة ثانية من مساراته. */}
-      <g transform="rotate(-9 86 94)">
-        <circle cx="86" cy="94" r="48" fill="var(--mb-mkt-ground-2)" opacity="0.7" />
-        <circle cx="86" cy="94" r="36" fill="var(--mb-seal)" />
-        <Logo x="62" y="70" size={48} body="var(--mb-surface)" accent="var(--mb-surface)" aria-hidden="true" />
-      </g>
-
-      {/* خط المراحل مع اتجاه القراءة: الأولى والوسطى تمّتا بعلامة صح، والأخيرة مفرّغة لم تتم بعد */}
-      <line x1="90" y1="310" x2="330" y2="310" stroke="var(--mb-mkt-line-strong)" strokeWidth="2" />
-      {timeline.map(({ cx, done }) => (
-        <g key={cx}>
-          <circle
-            cx={cx}
-            cy="310"
-            r="12"
-            fill={done ? 'var(--mb-mkt-mint)' : 'var(--mb-mkt-ground-2)'}
-            stroke="var(--mb-mkt-mint)"
-            strokeWidth="2"
-          />
-          {done && (
+        {/* الختم المثمّن مائلاً اثنتي عشرة درجة، جالساً على الزاوية السفلى للبطاقة الأمامية. */}
+        <g transform="translate(104 300) rotate(12)">
+          <polygon className="mb-hero-ring" points={octagon(40)} fill="none" stroke="var(--mb-mkt-mint)" strokeWidth="2" />
+          <g className="mb-hero-seal">
+            <polygon points={octagon(40)} fill="var(--mb-mkt-mint)" />
+            <polygon points={octagon(33)} fill="none" stroke="var(--mb-mkt-ground)" strokeWidth="1.5" opacity="0.45" />
             <path
-              d={`M${cx - 5} 310.5 l3.5 3.5 l6.5 -7`}
+              className="mb-hero-check"
+              pathLength="1"
+              d="M-15 1 l10 10 l20 -22"
               fill="none"
               stroke="var(--mb-mkt-ground)"
-              strokeWidth="2.25"
+              strokeWidth="6"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-          )}
-          <rect x={cx - 22} y="334" width="44" height="6" rx="3" fill="var(--mb-mkt-muted)" opacity="0.4" />
+          </g>
         </g>
-      ))}
+      </g>
     </svg>
   );
 }
@@ -705,7 +727,7 @@ function HowItWorks() {
 
       <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
         {copy.rules.map((rule) => (
-          <li key={rule.title} className="rounded-xl border border-mkt-line bg-mkt-surface px-5 py-4">
+          <li key={rule.title} tabIndex={0} className="mb-glow-card rounded-xl border border-mkt-line bg-mkt-surface px-5 py-4">
             <p className={`text-mkt-paper ${type.strong}`}>{rule.title}</p>
             <p className="mt-1 text-sm text-mkt-muted">{rule.text}</p>
           </li>
@@ -803,11 +825,12 @@ function Section({ id, eyebrow, title, lead, children }) {
   );
 }
 
-/** بطاقة بأيقونة فوق عنوانها. icon مفتاح في CARD_ICONS. */
+/** بطاقة بأيقونة فوق عنوانها. icon مفتاح في CARD_ICONS.
+    mb-glow-card (index.css): ترتفع بحلقة متوهّجة عند المرور واللمس والتركيز، و tabIndex لتصلها لوحة المفاتيح. */
 function Card({ icon, title, children }) {
   const { type } = useLanding();
   return (
-    <div className="h-full rounded-xl border border-mkt-line bg-mkt-surface p-6">
+    <div tabIndex={0} className="mb-glow-card h-full rounded-xl border border-mkt-line bg-mkt-surface p-6">
       <CardIcon name={icon} />
       <h3 className={`mt-4 text-lg text-mkt-paper ${type.strong}`}>{title}</h3>
       <div className="mt-3 text-mkt-muted">{children}</div>
@@ -816,19 +839,20 @@ function Card({ icon, title, children }) {
 }
 
 /**
- * مربّع مستدير بخلفية نعناعية شفافة (mkt-line) وحدّ رفيع، بداخله أيقونة خطّية بالنعناعي.
+ * مربّع مستدير بخلفية نعناعية شفافة (mkt-line) وحدّ رفيع، بداخله أيقونة خطّية بالنعناعي (currentColor).
+ * في البطاقة المرفوعة يمتلئ المربّع بالنعناعي وتنقلب الأيقونة للون الأرضية (.mb-card-icon في index.css).
  * المقاس واحد في البطاقات العشر. زخرفة تُخفى عن قارئ الشاشة — العنوان يحمل المعنى.
  */
 function CardIcon({ name }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-11 items-center justify-center rounded-lg border border-mkt-line-strong bg-mkt-line"
+      className="mb-card-icon flex size-11 items-center justify-center rounded-lg border border-mkt-line-strong bg-mkt-line text-mkt-mint"
     >
       <svg
         viewBox="0 0 24 24"
         fill="none"
-        stroke="var(--mb-mkt-mint)"
+        stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
