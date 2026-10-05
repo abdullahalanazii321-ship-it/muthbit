@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
 import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
@@ -372,10 +372,38 @@ export default function LandingPage() {
   useLayoutEffect(() => (lang === 'en' ? applyEnglishDocument(document, COPY.en.meta) : undefined), [lang]);
 
   const value = { lang, t: COPY[lang], type: TYPE[lang], toggle };
+  const rootRef = useRef(null);
+
+  // ظهور الأقسام أثناء التمرير — مراقب واحد للصفحة كلها (الأنماط في index.css تحت .mb-reveal).
+  // الظهور هو الافتراضي في CSS، والإخفاء لا يبدأ إلا بعد أن يضيف هذا الأثر js-reveal على جذر الصفحة:
+  // لو لم يعمل (لا IntersectionObserver، أو خطأ قبله) بقيت الصفحة كاملة ظاهرة.
+  // ومع تقليل الحركة لا يعمل أصلاً. يتكرّر: الخارج من الشاشة يُخفى ليظهر من جديد عند العودة إليه.
+  // data-revealed لا صنف: React يعيد كتابة className حين تتغيّر اللغة (type.heading) فيمحو صنفاً أُضيف يدوياً.
+  // [lang]: تغيير اللغة يعيد تركيب بعض العناصر (مفاتيحها نصوص)، فيُعاد التقاطها كلها.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return undefined;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) entry.target.dataset.revealed = 'true';
+          else delete entry.target.dataset.revealed;
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -6% 0px' }
+    );
+    root.querySelectorAll('.mb-reveal').forEach((element) => observer.observe(element));
+    root.classList.add('js-reveal');
+    return () => {
+      observer.disconnect();
+      root.classList.remove('js-reveal');
+    };
+  }, [lang]);
 
   return (
     <LandingContext.Provider value={value}>
-      <div className="min-h-screen bg-mkt-ground text-mkt-paper">
+      <div ref={rootRef} className="min-h-screen bg-mkt-ground text-mkt-paper">
         <SiteHeader />
         <main>
           <Hero />
@@ -633,9 +661,9 @@ function Problems() {
   const copy = t.problems;
   return (
     <Section id="why" eyebrow={copy.eyebrow} title={copy.title} lead={copy.lead}>
-      <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {copy.items.map((item) => (
-          <li key={item.icon}>
+      <ul className="mb-reveal-cols-900 mt-12 grid gap-5 min-[900px]:grid-cols-3">
+        {copy.items.map((item, index) => (
+          <li key={item.icon} className="mb-reveal" style={{ '--i': index + 3 }}>
             <Card icon={item.icon} title={item.title}>
               {item.text}
             </Card>
@@ -653,9 +681,9 @@ function Features() {
   const copy = t.features;
   return (
     <Section id="features" eyebrow={t.sections.features} title={copy.title} lead={copy.lead}>
-      <ul className="mt-12 grid gap-5 sm:grid-cols-2 min-[900px]:grid-cols-4">
-        {copy.items.map((item) => (
-          <li key={item.icon}>
+      <ul className="mb-reveal-cols-640 mt-12 grid gap-5 sm:grid-cols-2 min-[900px]:grid-cols-4">
+        {copy.items.map((item, index) => (
+          <li key={item.icon} className="mb-reveal" style={{ '--i': index + 3 }}>
             <Card icon={item.icon} title={item.title}>
               {item.text}
             </Card>
@@ -673,9 +701,9 @@ function Parties() {
   const copy = t.parties;
   return (
     <Section id="parties" eyebrow={t.sections.parties} title={copy.title} lead={copy.lead}>
-      <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {copy.items.map((party) => (
-          <li key={party.icon}>
+      <ul className="mb-reveal-cols-900 mt-12 grid gap-5 min-[900px]:grid-cols-3">
+        {copy.items.map((party, index) => (
+          <li key={party.icon} className="mb-reveal" style={{ '--i': index + 3 }}>
             <Card icon={party.icon} title={party.title}>
               <ul className="space-y-3">
                 {party.points.map((point) => (
@@ -704,11 +732,12 @@ function HowItWorks() {
         {/* الخط الأفقي يمرّ بمراكز الدوائر: من منتصف العمود الأول إلى منتصف الأخير.
             تحت 900 بكسل يختفي وتصير الخطوات تحت بعضها. */}
         <div aria-hidden="true" className="absolute inset-x-[12.5%] top-5 hidden h-px bg-mkt-line-strong min-[900px]:block" />
-        <ol className="relative grid gap-8 min-[900px]:grid-cols-4 min-[900px]:gap-6">
+        <ol className="mb-reveal-cols-900 relative grid gap-8 min-[900px]:grid-cols-4 min-[900px]:gap-6">
           {copy.steps.map((step, index) => (
             <li
               key={step.title}
-              className="flex gap-4 min-[900px]:flex-col min-[900px]:items-center min-[900px]:text-center"
+              className="mb-reveal flex gap-4 min-[900px]:flex-col min-[900px]:items-center min-[900px]:text-center"
+              style={{ '--i': index + 3 }}
             >
               {/* text-surface على bg-seal كزر المنصة الأساسي: يبقى مقروءاً والختم يتبدّل مع وضع النظام. */}
               <span
@@ -725,9 +754,14 @@ function HowItWorks() {
         </ol>
       </div>
 
-      <ul className="mt-12 grid gap-5 min-[900px]:grid-cols-3">
-        {copy.rules.map((rule) => (
-          <li key={rule.title} tabIndex={0} className="mb-glow-card rounded-xl border border-mkt-line bg-mkt-surface px-5 py-4">
+      <ul className="mb-reveal-cols-900 mt-12 grid gap-5 min-[900px]:grid-cols-3">
+        {copy.rules.map((rule, index) => (
+          <li
+            key={rule.title}
+            tabIndex={0}
+            className="mb-glow-card mb-reveal rounded-xl border border-mkt-line bg-mkt-surface px-5 py-4"
+            style={{ '--i': index + 3 }}
+          >
             <p className={`text-mkt-paper ${type.strong}`}>{rule.title}</p>
             <p className="mt-1 text-sm text-mkt-muted">{rule.text}</p>
           </li>
@@ -745,11 +779,17 @@ function FinalCall() {
     <section aria-labelledby="cta-title" className="border-t border-mkt-line py-20">
       <div className={container}>
         <div className="rounded-2xl border border-mkt-line-strong bg-gradient-to-b from-mkt-surface-2 to-mkt-surface px-6 py-14 text-center sm:px-12">
-          <h2 id="cta-title" className={`text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}>
+          <h2
+            id="cta-title"
+            className={`mb-reveal text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}
+            style={{ '--i': 1 }}
+          >
             {t.cta.title}
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-mkt-muted">{t.cta.text}</p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <p className="mb-reveal mx-auto mt-4 max-w-2xl text-lg text-mkt-muted" style={{ '--i': 2 }}>
+            {t.cta.text}
+          </p>
+          <div className="mb-reveal mt-8 flex flex-wrap justify-center gap-3" style={{ '--i': 3 }}>
             <CtaLink to="/register?type=company">{t.cta.primary}</CtaLink>
             <CtaLink to="/register?type=supplier" variant="outline">
               {t.cta.secondary}
@@ -813,11 +853,19 @@ function Section({ id, eyebrow, title, lead, children }) {
     <section id={id} aria-labelledby={titleId} className="border-t border-mkt-line py-20">
       <div className={container}>
         <div className="max-w-2xl">
-          <p className="text-sm font-semibold text-mkt-mint">{eyebrow}</p>
-          <h2 id={titleId} className={`mt-3 text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}>
+          <p className="mb-reveal text-sm font-semibold text-mkt-mint" style={{ '--i': 0 }}>
+            {eyebrow}
+          </p>
+          <h2
+            id={titleId}
+            className={`mb-reveal mt-3 text-3xl leading-snug text-mkt-paper sm:text-4xl ${type.heading}`}
+            style={{ '--i': 1 }}
+          >
             {title}
           </h2>
-          <p className="mt-4 text-lg text-mkt-muted">{lead}</p>
+          <p className="mb-reveal mt-4 text-lg text-mkt-muted" style={{ '--i': 2 }}>
+            {lead}
+          </p>
         </div>
         {children}
       </div>

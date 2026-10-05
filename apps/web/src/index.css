@@ -160,3 +160,57 @@
     transform: none;
   }
 }
+
+/* =========================================================
+   صفحة التعريف — ظهور المحتوى أثناء التمرير (.mb-reveal)
+   المراقب في LandingPage.jsx يضع data-revealed على العنصر حين يظهر ١٥٪ منه، وينزعه حين يخرج،
+   فيتكرّر الظهور كلما عاد المستخدم إليه.
+   الظهور هو الافتراضي: الإخفاء تحت .js-reveal وحده، وذاك صنف يضعه المراقب على جذر الصفحة —
+   فإن لم يعمل المراقب لم يختفِ شيء.
+   translate لا transform: البطاقة المتوهّجة ترتفع بـ transform، والخاصيتان منفصلتان فتجتمعان ولا تتدافعان.
+   التأخير من ترتيب العنصر في قسمه (--i): ٩٠ جزءاً من الألف بين كل عنصر والذي يليه.
+   ========================================================= */
+.mb-reveal {
+  transition:
+    opacity 620ms var(--mb-ease-out),
+    translate 620ms var(--mb-ease-out);
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+.js-reveal .mb-reveal:not([data-revealed]) {
+  opacity: 0;
+  translate: 0 22px;
+}
+
+/* بطاقات الحالات في «كيف تعمل» متوهّجة ومُظهَرة معاً: transition واحدة تجمع الاثنين،
+   والتأخير على الظهور وحده — فلا تتأخّر الحلقة عند المرور. */
+.mb-reveal.mb-glow-card {
+  transition:
+    transform 260ms var(--mb-ease-out),
+    box-shadow 260ms var(--mb-ease-out),
+    border-color 260ms var(--mb-ease-out),
+    opacity 620ms var(--mb-ease-out),
+    translate 620ms var(--mb-ease-out);
+  transition-delay: 0s, 0s, 0s, calc(var(--i, 0) * 90ms), calc(var(--i, 0) * 90ms);
+}
+
+/* البطاقات في عمود واحد: كل بطاقة تدخل الشاشة وحدها، فلا معنى لانتظارها ما قبلها — تأخيرها صفر.
+   التدرّج يبقى على رأس القسم (العنوان الصغير والعنوان والفقرة)، وعلى البطاقات حين تصطفّ جنباً إلى جنب.
+   اسم صنف القائمة هو العرض الذي تبدأ عنده أعمدتها: 900 لأغلبها، و 640 للمميزات (عمودان من sm). */
+@media (max-width: 899.98px) {
+  .mb-reveal-cols-900 > .mb-reveal {
+    transition-delay: 0s;
+  }
+}
+@media (max-width: 639.98px) {
+  .mb-reveal-cols-640 > .mb-reveal {
+    transition-delay: 0s;
+  }
+}
+
+/* تقليل الحركة: المراقب لا يعمل أصلاً (فلا js-reveal ولا إخفاء)، وهنا احتياط بلا انتقال. */
+@media (prefers-reduced-motion: reduce) {
+  .mb-reveal,
+  .mb-reveal.mb-glow-card {
+    transition: none;
+  }
+}
