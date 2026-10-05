@@ -28,6 +28,8 @@ import AuditPage from './pages/AuditPage.jsx';
 import TeamPage from './pages/TeamPage.jsx';
 import Alert from './components/Alert.jsx';
 import Button from './components/Button.jsx';
+import LegalPage from './pages/LegalPage.jsx';
+import { PRIVACY, TERMS } from './lib/legalContent.jsx';
 
 export default function App() {
   const { check } = useSession();
@@ -65,6 +67,9 @@ export default function App() {
       {/* بلا حارس عمداً: رابط البريد يُفتح ولو كان في المتصفح جلسة أخرى، والتحويل عنه يضيّع الرمز. */}
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/" element={<PublicHome />} />
+      {/* عامتان للزائر ولمن سجّل دخوله على السواء — لا تحويل ولا حماية. */}
+      <Route path="/terms" element={<LegalPage doc={TERMS} />} />
+      <Route path="/privacy" element={<LegalPage doc={PRIVACY} />} />
       <Route
         path="/requests"
         element={

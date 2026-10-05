@@ -175,6 +175,8 @@ const COPY = {
       tagline: 'منصة مشتريات موثّقة للشركات السعودية',
       createAccount: 'إنشاء حساب',
       signIn: 'تسجيل الدخول',
+      terms: 'شروط الاستخدام',
+      privacy: 'سياسة الخصوصية',
       copyright: '© 2026 مثبت. جميع الحقوق محفوظة.',
       madeIn: 'صُمّمت في المملكة العربية السعودية'
     }
@@ -328,6 +330,8 @@ const COPY = {
       tagline: 'Verified procurement for Saudi companies',
       createAccount: 'Create account',
       signIn: 'Sign in',
+      terms: 'Terms of use',
+      privacy: 'Privacy policy',
       copyright: '© 2026 Muthbit. All rights reserved.',
       madeIn: 'Designed in Saudi Arabia'
     }
@@ -419,10 +423,29 @@ export default function LandingPage() {
   );
 }
 
+/**
+ * إطار صفحة التعريف لصفحاتها العامة الأخرى (الشروط والخصوصية): الشريط والتذييل نفساهما بالعربية.
+ * بلا زر لغة — لا نسخة إنجليزية لنصوص تلك الصفحات — وبلا روابط أقسام صفحة التعريف، فلا أقسام هنا.
+ */
+export function PublicFrame({ children }) {
+  const value = { lang: DEFAULT_LANG, t: COPY[DEFAULT_LANG], type: TYPE[DEFAULT_LANG], toggle: null };
+  return (
+    <LandingContext.Provider value={value}>
+      <div className="min-h-screen bg-mkt-ground text-mkt-paper">
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </div>
+    </LandingContext.Provider>
+  );
+}
+
 /* ───────────────────────────── الشريط العلوي ───────────────────────────── */
 
 function SiteHeader() {
   const { t, toggle } = useLanding();
+  // في صفحة التعريف وحدها (معها مبدّل لغة): روابط أقسامها وزر اللغة.
+  const onLanding = Boolean(toggle);
   return (
     <header className="border-b border-mkt-line">
       {/* فجوات أضيق على الجوال (هنا تحت ٧٦٨، وبين أزرار الشريط تحت ٧٢٠): مع زر الوضع لا يتّسع عرض ٣٦٠
@@ -431,26 +454,30 @@ function SiteHeader() {
         <Brand />
         <nav aria-label={t.nav.label} className="flex items-center gap-2 min-[720px]:gap-6">
           {/* تحت 720 بكسل تختفي روابط الأقسام، وتبقى أزرار اللغة والوضع والدخول. */}
-          <ul className="hidden items-center gap-6 text-sm font-medium min-[720px]:flex">
-            {SECTION_IDS.map((id) => (
-              <li key={id}>
-                <a href={`#${id}`} className={textLink}>
-                  {t.sections[id]}
-                </a>
-              </li>
-            ))}
-          </ul>
+          {onLanding && (
+            <ul className="hidden items-center gap-6 text-sm font-medium min-[720px]:flex">
+              {SECTION_IDS.map((id) => (
+                <li key={id}>
+                  <a href={`#${id}`} className={textLink}>
+                    {t.sections[id]}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
           {/* النص بلغة الوجهة (EN أو ع)، و lang عليه لينطقه قارئ الشاشة بلغته، و aria-label اسم اللغة كاملاً.
               تحت ٧٦٨ بكسل: الزرّان ٤٦ بكسل ارتفاعاً (py-3) والمبدّل ٤٤ عرضاً — أول ما يلمسه الزائر. فوقها كما كانا. */}
-          <button
-            type="button"
-            onClick={toggle}
-            lang={t.toggle.lang}
-            aria-label={t.toggle.label}
-            className={`inline-flex min-w-11 items-center justify-center rounded border border-mkt-line-strong px-3 py-3 text-sm font-semibold text-mkt-paper transition-colors hover:border-mkt-mint md:min-w-10 md:py-2 ${focusRing}`}
-          >
-            {t.toggle.text}
-          </button>
+          {onLanding && (
+            <button
+              type="button"
+              onClick={toggle}
+              lang={t.toggle.lang}
+              aria-label={t.toggle.label}
+              className={`inline-flex min-w-11 items-center justify-center rounded border border-mkt-line-strong px-3 py-3 text-sm font-semibold text-mkt-paper transition-colors hover:border-mkt-mint md:min-w-10 md:py-2 ${focusRing}`}
+            >
+              {t.toggle.text}
+            </button>
+          )}
           {/* زر الوضع بجوار زر اللغة وبشكله ومقاسه نفسيهما — المكوّن نفسه في شاشات الباب الأمامي. */}
           <PublicThemeToggle labels={t.theme} />
           <Link
@@ -469,10 +496,11 @@ function SiteHeader() {
 function Brand() {
   const { lang, t, type } = useLanding();
   // تبقى اللغة مع الشعار ولو كان التخزين محجوباً.
+  // رابط مستقل: ٤٤ بكسل ارتفاعاً تحت ٧٦٨ (الرمز ٣٠ وحده)، وفوقها كما كان.
   return (
     <Link
       to={lang === 'en' ? `/?${LANG_PARAM}=en` : '/'}
-      className={`flex items-center gap-2 rounded-sm text-lg text-mkt-paper ${type.strong} ${focusRing}`}
+      className={`flex min-h-11 items-center gap-2 rounded-sm md:min-h-0 text-lg text-mkt-paper ${type.strong} ${focusRing}`}
     >
       <Logo size={30} onDark aria-hidden="true" />
       {t.brand}
@@ -802,7 +830,8 @@ function FinalCall() {
 }
 
 function SiteFooter() {
-  const { t } = useLanding();
+  const { t, toggle } = useLanding();
+  const onLanding = Boolean(toggle);
   return (
     <footer className="border-t border-mkt-line bg-mkt-ground-2">
       <div className={`${container} py-12`}>
@@ -813,13 +842,14 @@ function SiteFooter() {
           </div>
           <nav aria-label={t.footer.label}>
             <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
-              {SECTION_IDS.map((id) => (
-                <li key={id}>
-                  <a href={`#${id}`} className={footerLink}>
-                    {t.sections[id]}
-                  </a>
-                </li>
-              ))}
+              {onLanding &&
+                SECTION_IDS.map((id) => (
+                  <li key={id}>
+                    <a href={`#${id}`} className={footerLink}>
+                      {t.sections[id]}
+                    </a>
+                  </li>
+                ))}
               <li>
                 <Link to="/register" className={footerLink}>
                   {t.footer.createAccount}
@@ -828,6 +858,16 @@ function SiteFooter() {
               <li>
                 <Link to="/login" className={footerLink}>
                   {t.footer.signIn}
+                </Link>
+              </li>
+              <li>
+                <Link to="/terms" className={footerLink}>
+                  {t.footer.terms}
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy" className={footerLink}>
+                  {t.footer.privacy}
                 </Link>
               </li>
             </ul>

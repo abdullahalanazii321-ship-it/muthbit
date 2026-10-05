@@ -526,6 +526,16 @@ function RegistrationForm({ kind, onChangeKind, onRegistered, rateLimit }) {
         >
           {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'إرسال طلب التسجيل'}
         </Button>
+        <p className="text-sm text-muted">
+          بإنشاء الحساب فإنك توافق على{' '}
+          <Link to="/terms" className={LINK_CLASSES}>
+            شروط الاستخدام
+          </Link>{' '}
+          و
+          <Link to="/privacy" className={LINK_CLASSES}>
+            سياسة الخصوصية
+          </Link>
+        </p>
         {/* الزر المعطّل يقول لماذا، وإلا ظن المورد المنصة معطّلة. */}
         {categoriesMissing && !categoriesBlocked && !rateLimit.blocked && (
           <p className="text-sm text-muted">{MESSAGES.categories}</p>
@@ -858,6 +868,16 @@ function JoinForm({ onChangeKind, onJoined, rateLimit }) {
         <Button type="submit" disabled={!ready || rateLimit.blocked} loading={submitting} loadingText="جارٍ الإرسال…">
           {(rateLimit.blocked && retryLabel(rateLimit.remaining)) || 'إرسال طلب الانضمام'}
         </Button>
+        <p className="text-sm text-muted">
+          بإنشاء الحساب فإنك توافق على{' '}
+          <Link to="/terms" className={LINK_CLASSES}>
+            شروط الاستخدام
+          </Link>{' '}
+          و
+          <Link to="/privacy" className={LINK_CLASSES}>
+            سياسة الخصوصية
+          </Link>
+        </p>
       </div>
     </form>
   );

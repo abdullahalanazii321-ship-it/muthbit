@@ -198,6 +198,15 @@ function UserBlock({ user, onSignOut }) {
       >
         تسجيل الخروج
       </button>
+      {/* قائمة روابط لا روابط داخل جملة: ٤٤ بكسل تحت ٧٦٨، وسطر صغير فوقها. */}
+      <nav aria-label="الشروط والخصوصية" className="flex flex-wrap gap-x-4 px-1">
+        <Link to="/terms" className={`inline-flex min-h-11 items-center rounded-sm text-xs text-nav-muted hover:text-nav-ink md:min-h-0 ${navFocus}`}>
+          شروط الاستخدام
+        </Link>
+        <Link to="/privacy" className={`inline-flex min-h-11 items-center rounded-sm text-xs text-nav-muted hover:text-nav-ink md:min-h-0 ${navFocus}`}>
+          سياسة الخصوصية
+        </Link>
+      </nav>
     </div>
   );
 }
