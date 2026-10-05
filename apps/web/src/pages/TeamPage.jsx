@@ -5,7 +5,7 @@ import { CREATABLE_ROLES, canManageTeam } from '../lib/access.js';
 import { formatSAR, roleLabel, userStatusLabel } from '../lib/labels.js';
 import { useResource } from '../lib/useResource.js';
 import { isPasswordValid } from '../lib/passwordPolicy.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
@@ -130,14 +130,11 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell
+      title="فريق الشركة"
+      action={canManage && <Button onClick={() => openPanel({ kind: 'new' })}>مستخدم جديد</Button>}
+    >
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="font-display text-2xl font-semibold text-ink">فريق الشركة</h1>
-          {canManage && <Button onClick={() => openPanel({ kind: 'new' })}>مستخدم جديد</Button>}
-        </div>
-
         {notice && (
           <div className="mt-6">
             <Alert tone="seal">{notice}</Alert>
@@ -225,7 +222,7 @@ export default function TeamPage() {
           )}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 
@@ -253,16 +250,17 @@ function PanelCard({ title, children }) {
 
 /**
  * قائمة المستخدمين بشكلين لعرض واحد من البيانات:
- * بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * بطاقات مكدّسة تحت ١٢٨٠ بكسل، والجدول كما هو فوقها. الجدول يحتاج ٧٨٧ بكسل، والقائمة الجانبية تأخذ ٢٣٢ فوق ٧٦٨،
+ * فلا يتّسع له المحتوى قبل ١٠٥٦ — وتحتها كان يتمرّر داخل صندوقه بلا دليل.
  * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا يدفع الصفحة أفقياً.
  */
 function UsersList(props) {
   return (
     <>
-      <div className="md:hidden">
+      <div className="xl:hidden">
         <UsersCards {...props} />
       </div>
-      <div className="hidden md:block">
+      <div className="hidden xl:block">
         <UsersTable {...props} />
       </div>
     </>

@@ -94,21 +94,21 @@ function EventRow({ event }) {
 
   return (
     <li className="px-4 py-3 sm:px-5">
-      <div className="flex flex-col gap-1 text-sm md:flex-row md:items-baseline md:gap-6">
-        <time dateTime={event.created_at} className="shrink-0 whitespace-nowrap font-mono tabular-nums text-muted md:w-36">
+      <div className="flex flex-col gap-1 text-sm lg:flex-row lg:items-baseline lg:gap-6">
+        <time dateTime={event.created_at} className="shrink-0 whitespace-nowrap font-mono tabular-nums text-muted lg:w-36">
           {formatDateTime(event.created_at)}
         </time>
 
-        <p className="md:w-1/4 md:shrink-0">
+        <p className="lg:w-1/4 lg:shrink-0">
           <span className="text-ink">{event.actor_name ?? '—'}</span>
           {event.actor_role && <span className="ms-2 text-muted">{roleLabel(event.actor_role)}</span>}
         </p>
 
-        <p className={`font-medium md:flex-1 ${actionTone(event.action)}`}>
+        <p className={`font-medium lg:flex-1 ${actionTone(event.action)}`}>
           {known ? auditActionLabel(event.action) : <bdi className="font-mono">{event.action}</bdi>}
         </p>
 
-        <p className="text-muted md:w-1/5 md:shrink-0">
+        <p className="text-muted lg:w-1/5 lg:shrink-0">
           {entityTypeLabel(event.entity_type)}
           {event.entity_id && (
             <bdi className="ms-2 font-mono" title={event.entity_id}>
@@ -117,9 +117,9 @@ function EventRow({ event }) {
           )}
         </p>
 
-        <div className="mt-2 md:mt-0 md:w-16 md:shrink-0 md:text-end">
+        <div className="mt-2 lg:mt-0 lg:w-16 lg:shrink-0 lg:text-end">
           {showDetails && (
-            // تحت ٧٦٨ بكسل: بعرض الصف وارتفاع ٤٦ بكسل، فهدف اللمس بحجم إصبع لا ٥٣×٢٢.
+            // تحت ١٠٢٤ بكسل: بعرض الصف وارتفاع ٤٦ بكسل، فهدف اللمس بحجم إصبع لا ٥٣×٢٢.
             // py-3 لا py-2.5: سطر text-sm ثابت ٢٠ بكسل، فـ py-2.5 تعطي ٤٢ — دون حدّ ٤٤.
             // فوقها الصنف الصغير كما كان حرفياً.
             <button
@@ -127,7 +127,7 @@ function EventRow({ event }) {
               aria-expanded={open}
               aria-controls={detailsId}
               onClick={() => setOpen((current) => !current)}
-              className={`w-full rounded-sm border border-line-strong px-4 py-3 text-sm font-medium text-ink hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal md:w-auto md:px-2 md:py-0.5 md:text-xs ${
+              className={`w-full rounded-sm border border-line-strong px-4 py-3 text-sm font-medium text-ink hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal lg:w-auto lg:px-2 lg:py-0.5 lg:text-xs ${
                 open ? 'bg-surface-2' : ''
               }`}
             >
@@ -161,11 +161,11 @@ function EventsSkeleton() {
       </p>
       <ul className="divide-y divide-line rounded border border-line bg-surface">
         {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-          <li key={index} className="flex flex-col gap-2 px-4 py-3 sm:px-5 md:flex-row md:gap-6">
+          <li key={index} className="flex flex-col gap-2 px-4 py-3 sm:px-5 lg:flex-row lg:gap-6">
             <div className={`w-36 ${bar}`} />
-            <div className={`md:w-1/4 ${bar}`} />
-            <div className={`md:flex-1 ${bar}`} />
-            <div className={`md:w-1/5 ${bar}`} />
+            <div className={`lg:w-1/4 ${bar}`} />
+            <div className={`lg:flex-1 ${bar}`} />
+            <div className={`lg:w-1/5 ${bar}`} />
           </li>
         ))}
       </ul>

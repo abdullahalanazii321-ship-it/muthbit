@@ -4,7 +4,7 @@ import { apiFetch, errorMessage } from '../lib/api.js';
 import { formatDate, formatDays, formatMonths, formatOfferCount, formatSAR, roleLabel } from '../lib/labels.js';
 import { blockedReasons, reasonMessages } from '../lib/policy.js';
 import { useResource } from '../lib/useResource.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Detail from '../components/Detail.jsx';
@@ -96,8 +96,7 @@ function RequestDetail({ id }) {
   };
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell title="تفاصيل الطلب" titleAs="p">
       {/* break-words موروثة، فسطر واحد هنا يكسر كل نص طويل في الشاشة: الصنف، واسم المورد،
           وأسباب السياسة، ورقم أمر الشراء. قِيس قبلها: صنف بكلمة واحدة بلا مسافة (رقم موديل)
           كان يدفع الصفحة ٢٢٤ بكسل خارج الشاشة، واسم المورد ٤٥، وسبب السياسة ٢٢.
@@ -116,7 +115,7 @@ function RequestDetail({ id }) {
           />
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { blockedReasons, reasonMessages } from '../lib/policy.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
@@ -57,13 +57,10 @@ export default function NewRequestPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell title="طلب شراء جديد">
       {/* break-words موروثة: تكسر رسالة الخادم أو سبب السياسة الطويل بلا مسافة بدل أن يدفع الصفحة أفقياً. */}
       <main className="mx-auto max-w-5xl break-words px-4 py-8">
-        <h1 className="font-display text-2xl font-semibold text-ink">طلب شراء جديد</h1>
-
-        <div className="mt-6 max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
+        <div className="max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
           {/* noValidate: فقاعات تحقق المتصفح تظهر بلغته، ونريد رسائل الخادم العربية بدلها. */}
           <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-5">
             <Field
@@ -149,7 +146,7 @@ export default function NewRequestPage() {
           </form>
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 

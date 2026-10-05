@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { statusLabels } from '../lib/labels.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
@@ -45,20 +45,19 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell
+      title="طلبات الشراء"
+      action={
+        <Button as={Link} to="/requests/new">
+          طلب جديد
+        </Button>
+      }
+    >
       <main className="mx-auto max-w-5xl px-4 py-8">
         {notice.value && <CreatedNotice notice={notice.value} onClose={notice.dismiss} />}
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="font-display text-2xl font-semibold text-ink">طلبات الشراء</h1>
-          <Button as={Link} to="/requests/new">
-            طلب جديد
-          </Button>
-        </div>
-
         {/* المرشّح بعرض كامل على الجوال — هدف إصبع لا حقل ضيّق. وفوق ٧٦٨ بكسل يعود محصوراً كما كان. */}
-        <div className="mt-6 md:max-w-xs">
+        <div className="md:max-w-xs">
           <Field
             id="status-filter"
             as="select"
@@ -94,7 +93,7 @@ export default function RequestsPage() {
           {list.status === 'ready' && list.requests.length > 0 && <RequestsList requests={list.requests} />}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 

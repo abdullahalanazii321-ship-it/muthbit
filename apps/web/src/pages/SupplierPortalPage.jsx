@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { formatDate, formatDays, formatMonths, formatSAR, offerStatusLabel } from '../lib/labels.js';
 import { useResource } from '../lib/useResource.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import Button from '../components/Button.jsx';
 import Detail from '../components/Detail.jsx';
@@ -25,9 +25,7 @@ const TABS = [
   { key: OPEN_TAB, label: 'الطلبات المفتوحة' },
   { key: OFFERS_TAB, label: 'عروضي' }
 ];
-const OFFER_COLUMNS = ['المرجع', 'الصنف', 'الكمية', 'السعر', 'الضمان', 'مدة التسليم', 'حالة العرض', 'حالة الطلب', 'التاريخ'];
 const SKELETON_CARDS = 3;
-const SKELETON_ROWS = 4;
 
 // زر السحب للعرض المُقدَّم وحده: المختار يرفض الخادم سحبه، والمسحوب انتهى أمره.
 // وأي حالة غير معروفة لا يظهر لها زر — الافتراض هو المنع.
@@ -91,13 +89,10 @@ export default function SupplierPortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell title="بوابة المورد">
       {/* break-words موروثة، فسطر واحد يكسر كل نص طويل في الشاشة: الصنف، والمواصفات،
-          ورسائل الخادم، ورقم المرجع. خلايا الجدول عليها whitespace-nowrap فلا تتأثر. */}
+          ورسائل الخادم، ورقم المرجع. */}
       <main className="mx-auto max-w-5xl break-words px-4 py-8">
-        <h1 className="font-display text-2xl font-semibold text-ink">بوابة المورد</h1>
-
         <Tabs active={activeTab} onChange={changeTab} />
 
         <section role="tabpanel" id={`panel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} className="mt-6">
@@ -119,7 +114,7 @@ export default function SupplierPortalPage() {
           )}
         </section>
       </main>
-    </div>
+    </AppShell>
   );
 }
 
@@ -322,23 +317,15 @@ function MyOffersContent({ list, onWithdrawResult }) {
 }
 
 /**
- * عروضي بشكلين لعرض واحد من البيانات: بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
- * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
+ * عروضي بطاقات في كل العروض، لا جدول: الأعمدة العشرة تحتاج ١٠٠٥ بكسل، وأعرض محتوى للشاشة ٩٩٠
+ * (max-w-5xl) — فالجدول كان يتمرّر داخل صندوقه بلا دليل في كل مقاس، وعند ١٠٢٤ يمدّ الصفحة كلها.
+ * والبطاقة هي النمط المعتمد للجدول الذي لا يتّسع له المحتوى.
  */
 function OffersList(props) {
-  return (
-    <>
-      <div className="md:hidden">
-        <OffersCards {...props} />
-      </div>
-      <div className="hidden md:block">
-        <OffersTable {...props} />
-      </div>
-    </>
-  );
+  return <OffersCards {...props} />;
 }
 
-/** بطاقات العرض الضيق: بطاقة لكل عرض، فيها كل أعمدة الجدول العشرة بلا نقصان. */
+/** بطاقة لكل عرض، فيها الحقول العشرة كلها بلا نقصان. */
 function OffersCards({ loading = false, offers = [], onWithdrawResult }) {
   if (loading) {
     return (
@@ -403,73 +390,8 @@ function OffersCards({ loading = false, offers = [], onWithdrawResult }) {
   );
 }
 
-/** الجدول داخل حاوية تنزلق أفقياً وحدها على الشاشات الضيقة. */
-function OffersTable({ loading = false, offers = [], onWithdrawResult }) {
-  const cell = 'whitespace-nowrap px-4 py-3';
-  return (
-    <div className="overflow-x-auto rounded border border-line bg-surface">
-      <table className="w-full text-sm" aria-busy={loading || undefined}>
-        {loading && <caption className="sr-only">جارٍ التحميل…</caption>}
-        <thead className="bg-surface-2">
-          <tr>
-            {OFFER_COLUMNS.map((column) => (
-              <th key={column} scope="col" className={`${cell} text-start font-medium text-muted`}>
-                {column}
-              </th>
-            ))}
-            <th scope="col" className={cell}>
-              <span className="sr-only">إجراء</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading
-            ? Array.from({ length: SKELETON_ROWS }, (_, row) => (
-                <tr key={row} className="border-t border-line">
-                  {[...OFFER_COLUMNS, 'action'].map((column) => (
-                    <td key={column} className={cell}>
-                      <div className="h-4 rounded-sm bg-surface-2 motion-safe:animate-pulse" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            : offers.map((offer) => (
-                <tr key={offer.id} className="border-t border-line">
-                  <td className={`${cell} font-mono`}>
-                    <bdi>{offer.reference}</bdi>
-                  </td>
-                  <td className="px-4 py-3 text-ink">{offer.item}</td>
-                  <td className={`${cell} tabular-nums`}>{offer.quantity}</td>
-                  <td className={`${cell} tabular-nums`}>{formatSAR(offer.price)}</td>
-                  <TermCell value={offer.warranty_months} format={formatMonths} />
-                  <TermCell value={offer.lead_days} format={formatDays} />
-                  <td className={`${cell} text-ink`}>{offerStatusLabel(offer.status)}</td>
-                  <td className={cell}>
-                    <StatusBadge status={offer.request_status} />
-                  </td>
-                  {/* تاريخ آخر تغيير على الصف لا تاريخ إنشائه: يطابق السعر المعروض بعد إعادة التقديم.
-                      created_at احتياط إن نُشرت الواجهة قبل أن يعيد الخادم updated_at. */}
-                  <td className={`${cell} tabular-nums`}>{formatDate(offer.updated_at ?? offer.created_at)}</td>
-                  <td className={`${cell} text-end`}>
-                    {offer.status === WITHDRAWABLE_STATUS && (
-                      <WithdrawButton
-                        offerId={offer.id}
-                        label="سحب"
-                        onResult={(result) => onWithdrawResult(offer, result)}
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /**
  * قيمة الضمان أو مدة التسليم. الصفر «—» ومعه «ناقص» لقارئ الشاشة: العرض لا يصل المشتري.
- * يقرأها الجدول والبطاقات معاً فلا يفترقان في معنى الصفر.
  */
 function TermValue({ value, format }) {
   if (!isZeroTerm(value)) return <>{format(value)}</>;
@@ -478,16 +400,6 @@ function TermValue({ value, format }) {
       <span aria-hidden="true">—</span>
       <span className="sr-only">ناقص</span>
     </span>
-  );
-}
-
-/** الخلية نفسها في الجدول: الصفر يصبغ الخلية كلها بخلفية signal الخفيفة. */
-function TermCell({ value, format }) {
-  const missing = isZeroTerm(value);
-  return (
-    <td className={`whitespace-nowrap px-4 py-3 tabular-nums ${missing ? 'bg-signal-soft text-signal' : ''}`}>
-      <TermValue value={value} format={format} />
-    </td>
   );
 }
 

@@ -14,7 +14,7 @@ import {
   supplierStatusTones
 } from '../lib/labels.js';
 import { useResource } from '../lib/useResource.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import Alert from '../components/Alert.jsx';
 import AuditEvents from '../components/AuditEvents.jsx';
 import Button from '../components/Button.jsx';
@@ -94,10 +94,8 @@ export default function PlatformPage() {
   const closeCompany = () => setParams({ tab: 'companies' });
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
+    <AppShell title="لوحة المنصة">
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="font-display text-2xl font-semibold text-ink">لوحة المنصة</h1>
         <p className="mt-1 text-sm text-muted">
           توثيق الشركات والموردين. المورد لا يقدّم عرضاً قبل توثيقه، والشركة لا تدخل قبل تفعيلها.
         </p>
@@ -130,7 +128,7 @@ export default function PlatformPage() {
           )}
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }
 
@@ -277,16 +275,16 @@ function companyActions({ company, busy, onVerify, onSuspend, onOpen }) {
 }
 
 /**
- * الشركات بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * الشركات بشكلين لبيانات واحدة: بطاقات تحت ١٠٢٤ بكسل (القائمة الجانبية تضيّق المحتوى بينهما)، والجدول كما هو فوقها.
  * المخفي منهما display:none فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
  */
 function CompaniesList(props) {
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <CompaniesCards {...props} />
       </div>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <CompaniesTable {...props} />
       </div>
     </>
@@ -663,16 +661,16 @@ function supplierRating(supplier) {
 }
 
 /**
- * الموردون بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * الموردون بشكلين لبيانات واحدة: بطاقات تحت ١٠٢٤ بكسل (القائمة الجانبية تضيّق المحتوى بينهما)، والجدول كما هو فوقها.
  * هذه أهم قائمة على الجوال: منها يُوثَّق المورد وأنت خارج المكتب.
  */
 function SuppliersList(props) {
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <SuppliersCards {...props} />
       </div>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <SuppliersTable {...props} />
       </div>
     </>
@@ -1094,17 +1092,17 @@ function CategoriesTab() {
 }
 
 /**
- * الفئات بشكلين لبيانات واحدة: بطاقات تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * الفئات بشكلين لبيانات واحدة: بطاقات تحت ١٠٢٤ بكسل (القائمة الجانبية تضيّق المحتوى بينهما)، والجدول كما هو فوقها.
  * الاسم الإنجليزي والمعرّف لاتينيان داخل صفحة عربية، فكلاهما في bdi بـ dir="ltr"
  * كما في الجدول — وإلا انقلب ترتيب المحارف عند حرف غير لاتيني.
  */
 function CategoriesList(props) {
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <CategoriesCards {...props} />
       </div>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <CategoriesTable {...props} />
       </div>
     </>

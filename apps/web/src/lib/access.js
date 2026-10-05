@@ -16,6 +16,10 @@ const AUDIT_ROLES = ['company_owner', 'finance_manager', 'procurement_manager'];
 const TEAM_VIEW_ROLES = ['company_owner', 'finance_manager', 'procurement_manager'];
 const TEAM_MANAGE_ROLES = ['company_owner', 'finance_manager'];
 
+// من ينشئ طلباً — BUYER_ROLES في apps/api/src/routes/requests.routes.js (ai_agent منها بلا شاشة).
+// أدوار الشركة الأربعة التي تدخل كلها منها، فرابط «طلب جديد» يظهر لها كلها كما كان زرّه في شاشة الطلبات.
+const REQUEST_CREATOR_ROLES = ['procurement_buyer', 'procurement_manager', 'company_owner', 'finance_manager'];
+
 /** الأدوار الأربعة التي يُنشأ بها مستخدم من داخل الشركة (MANAGEABLE_ROLES في الخادم). */
 export const CREATABLE_ROLES = ['finance_manager', 'procurement_manager', 'procurement_buyer', 'ai_agent'];
 
@@ -35,6 +39,21 @@ export function homeFor(user) {
 /** لوحة المنصة لمسؤول المنصة وحده — لا دور آخر يفتحها. */
 export function canViewPlatform(user) {
   return user?.role === 'platform_admin';
+}
+
+/** «الطلبات» لكل من مكانه لوحة الشركة — المورد ومسؤول المنصة لهما مكانهما. */
+export function canViewRequests(user) {
+  return homeFor(user) === COMPANY_HOME;
+}
+
+/** رابط «طلب جديد». */
+export function canCreateRequest(user) {
+  return REQUEST_CREATOR_ROLES.includes(user?.role);
+}
+
+/** بوابة المورد للمورد وحده. */
+export function canViewSupplierPortal(user) {
+  return user?.role === 'supplier_admin';
 }
 
 /** يظهر رابط سجل التدقيق ويُفتح مساره لأدوار الشركة الثلاثة وحدها. */

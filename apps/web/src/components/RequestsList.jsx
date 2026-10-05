@@ -6,7 +6,7 @@ import { RecordCard, RecordCards, RecordCardsSkeleton, RecordField } from './Rec
 
 /**
  * قائمة الطلبات بشكلين لعرض واحد من البيانات:
- * بطاقات مكدّسة تحت ٧٦٨ بكسل، والجدول كما هو فوقها.
+ * بطاقات مكدّسة تحت ١٠٢٤ بكسل، والجدول كما هو فوقها — القائمة الجانبية تأخذ ٢٣٢ بكسل فوق ٧٦٨، فالجدول بينهما يضيق ويتمرّر داخل صندوقه بلا دليل.
  * المخفي منهما `display:none` فلا يقرؤه قارئ الشاشة ولا ينزلق داخل صندوقه.
  *
  * كانت في RequestsPage وحدها، ونُقلت هنا حين احتاجتها لوحة المنصة بـ linked=false:
@@ -18,10 +18,10 @@ import { RecordCard, RecordCards, RecordCardsSkeleton, RecordField } from './Rec
 export default function RequestsList({ loading = false, requests = [], linked = true }) {
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <RequestCards loading={loading} requests={requests} linked={linked} />
       </div>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <RequestsTable loading={loading} requests={requests} linked={linked} />
       </div>
     </>

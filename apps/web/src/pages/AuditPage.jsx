@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { entityTypeLabels } from '../lib/labels.js';
-import AppHeader from '../components/AppHeader.jsx';
+import AppShell from '../components/AppShell.jsx';
 import AuditEvents, { shortId } from '../components/AuditEvents.jsx';
 import Button from '../components/Button.jsx';
 import Field from '../components/Field.jsx';
@@ -41,14 +41,13 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ground">
-      <AppHeader />
-      {/* break-words موروثة تحت ٧٦٨ بكسل: اسم المنفّذ الطويل أو رمز إجراء غير معروف بلا مسافة ينكسر
-          بدل أن يدفع الصفحة أفقياً. وفوقها break-normal يُبقي الحاسب كما كان حرفياً — قيس عند ٧٦٨:
-          بدونه ينكسر المعرّف المختصر في عمود الكيان على سطرين. */}
-      <main className="mx-auto max-w-5xl break-words px-4 py-8 md:break-normal">
-        <h1 className="font-display text-2xl font-semibold text-ink">سجل التدقيق</h1>
-        <p className="mt-1 text-sm text-muted">سجل نهائي لا يُعدَّل ولا يُحذف — القيد مفروض في قاعدة البيانات نفسها.</p>
+    <AppShell title="سجل التدقيق">
+      {/* break-words موروثة تحت ١٠٢٤ بكسل: اسم المنفّذ الطويل أو رمز إجراء غير معروف بلا مسافة ينكسر
+          بدل أن يدفع الصفحة أفقياً. وفوقها break-normal يُبقي الحاسب كما كان حرفياً — بدونه ينكسر المعرّف
+          المختصر في عمود الكيان على سطرين. كانت ٧٦٨، ورُفعت مع صفّ السجل (AuditEvents) إلى ١٠٢٤:
+          القائمة الجانبية تأخذ ٢٣٢ بكسل، فالصف الأفقي عند ٧٦٨ كان يدفع الصفحة ٨١٢ بكسل. */}
+      <main className="mx-auto max-w-5xl break-words px-4 py-8 lg:break-normal">
+        <p className="text-sm text-muted">سجل نهائي لا يُعدَّل ولا يُحذف — القيد مفروض في قاعدة البيانات نفسها.</p>
 
         <div className="mt-6 grid max-w-lg gap-4 sm:grid-cols-2">
           <Field
@@ -106,6 +105,6 @@ export default function AuditPage() {
           />
         </div>
       </main>
-    </div>
+    </AppShell>
   );
 }

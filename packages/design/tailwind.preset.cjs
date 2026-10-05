@@ -25,6 +25,14 @@ module.exports = {
         signal: 'var(--mb-signal)',
         'signal-soft': 'var(--mb-signal-soft)',
         'logo-accent': 'var(--mb-logo-accent)',
+        // القائمة الجانبية خلف الدخول (AppShell).
+        'nav-ground': 'var(--mb-nav-ground)',
+        'nav-ink': 'var(--mb-nav-ink)',
+        'nav-muted': 'var(--mb-nav-muted)',
+        'nav-line': 'var(--mb-nav-line)',
+        'nav-hover': 'var(--mb-nav-hover)',
+        'nav-active': 'var(--mb-nav-active)',
+        'nav-accent': 'var(--mb-nav-accent)',
         // الصفحة العامة وحدها — داكنة ثابتة لا تتبع وضع النظام.
         'mkt-ground': 'var(--mb-mkt-ground)',
         'mkt-ground-2': 'var(--mb-mkt-ground-2)',
@@ -43,6 +51,7 @@ module.exports = {
         mono: ['IBM Plex Mono', 'IBM Plex Sans Arabic', 'ui-monospace', 'monospace']
       },
       lineHeight: { body: 'var(--mb-leading-body)' },
+      spacing: { sidebar: 'var(--mb-sidebar-width)' },
       borderRadius: { DEFAULT: '6px', sm: '4px' },
       maxWidth: { measure: '66ch' }
     }
