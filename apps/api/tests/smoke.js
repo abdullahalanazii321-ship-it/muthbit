@@ -2479,6 +2479,89 @@ async function run() {
     setLimitsEnabledForTests(false);
   }
 
+  section('٢٩ — إعادة تفعيل مسؤول المنصة الموقوف');
+  {
+    const ownerP = await login('admin@platform-demo.sa');
+    const companyOwner = await login('admin@owner-demo.sa');
+    const stamp29 = Date.now();
+    const accessRow = (where) => db('platform_access_log').where(where).orderBy('id', 'desc').first();
+    const ADMIN_PASSWORD = 'Reactivate-Check-2026!';
+    const create = (label) =>
+      request(app).post('/api/platform/admins').set(auth(ownerP.token)).send({ full_name: `مسؤول ${label}`, email: `reactivate-${label}-${stamp29}@platform-demo.sa`, password: ADMIN_PASSWORD });
+    const activate = (token, id, body) => request(app).post(`/api/platform/admins/${id}/activate`).set(auth(token)).send(body);
+
+    // حساب بقراءة السجل، ثم رمز دخول له قبل الإيقاف، ثم الإيقاف.
+    const target = (await create('target')).body.admin;
+    const other = (await create('other')).body.admin;
+    await request(app).put(`/api/platform/admins/${target.id}/access-log-reader`).set(auth(ownerP.token)).send({ allowed: true });
+    const oldSession = (await request(app).post('/api/auth/login').send({ email: target.email, password: ADMIN_PASSWORD })).body.token;
+    const otherP = (await request(app).post('/api/auth/login').send({ email: other.email, password: ADMIN_PASSWORD })).body;
+    await request(app).post(`/api/platform/admins/${target.id}/suspend`).set(auth(ownerP.token)).send({ reason: 'تحقيق في نشاط غير معتاد' });
+    const svBefore = (await db('users').where({ id: target.id }).first()).session_version;
+
+    // من لا يملك المنصة لا يعيد التفعيل: مسؤول منصة آخر، ومالك شركة.
+    const byOtherAdmin = await activate(otherP.token, target.id, { reason: 'محاولة من غير المالك' });
+    const byCompanyOwner = await activate(companyOwner.token, target.id, { reason: 'محاولة من خارج المنصة' });
+    const noReason = await activate(ownerP.token, target.id, {});
+    const blankReason = await activate(ownerP.token, target.id, { reason: '   ' });
+    const stillSuspended = (await db('users').where({ id: target.id }).first()).status;
+    check(
+      'إعادة التفعيل للمالك وحده، وبسبب مكتوب — وما رُفض لم يغيّر الحالة',
+      byOtherAdmin.status === 403 &&
+        byCompanyOwner.status === 403 &&
+        noReason.status === 400 &&
+        noReason.body.error.message === 'إعادة التفعيل تحتاج سبباً مكتوباً.' &&
+        blankReason.status === 400 &&
+        stillSuspended === 'suspended',
+      { other: byOtherAdmin.status, company: byCompanyOwner.status, noReason: noReason.status, blank: blankReason.status, status: stillSuspended }
+    );
+
+    const reason29 = 'انتهى التحقيق ولم يثبت شيء';
+    const activated = await activate(ownerP.token, target.id, { reason: reason29 });
+    const after = await db('users').where({ id: target.id }).first();
+    check(
+      'يعود الحساب نشطاً، ويستطيع الدخول من جديد',
+      activated.status === 200 &&
+        activated.body.message === 'أُعيد تفعيل حساب المسؤول.' &&
+        after.status === 'active' &&
+        (await request(app).post('/api/auth/login').send({ email: target.email, password: ADMIN_PASSWORD })).status === 200,
+      { status: activated.status, body: activated.body, after: after.status }
+    );
+
+    const oldSessionAfter = await request(app).get('/api/auth/me').set(auth(oldSession));
+    check(
+      'كل رمز صدر قبل الإيقاف يبطل بعد إعادة التفعيل (session_version يُزاد)',
+      oldSessionAfter.status === 401 && Number(after.session_version) === Number(svBefore) + 1,
+      { oldSession: oldSessionAfter.status, before: svBefore, after: after.session_version }
+    );
+
+    const activatedRow = await accessRow({ action: 'activated.platform_admin', target_user_id: target.id });
+    const revokedRow = await accessRow({ action: 'revoked.access_log', target_user_id: target.id });
+    check(
+      'قراءة السجل تُسحب عند إعادة التفعيل، ويُقيَّد الاثنان في سجل الوصول باسم المالك وبالسبب',
+      after.can_read_access_log === false &&
+        Boolean(activatedRow) &&
+        activatedRow.actor_user_id === ownerP.user.id &&
+        activatedRow.payload &&
+        activatedRow.payload.reason === reason29 &&
+        Boolean(revokedRow) &&
+        revokedRow.id > activatedRow.id,
+      { reader: after.can_read_access_log, activated: activatedRow && activatedRow.payload, revoked: Boolean(revokedRow) }
+    );
+
+    const again = await activate(ownerP.token, target.id, { reason: 'مرة ثانية' });
+    const ownerSelf = await activate(ownerP.token, ownerP.user.id, { reason: 'تفعيل المالك' });
+    check(
+      'لا يُعاد تفعيل الحساب النشط (٤٠٩)، ولا يُمسّ حساب المالك (٤٠٣)',
+      again.status === 409 && ownerSelf.status === 403,
+      { again: again.status, owner: ownerSelf.status }
+    );
+
+    // تنظيف: إيقاف حسابي الفحص بسبب.
+    await request(app).post(`/api/platform/admins/${target.id}/suspend`).set(auth(ownerP.token)).send({ reason: 'حساب فحص' });
+    await request(app).post(`/api/platform/admins/${other.id}/suspend`).set(auth(ownerP.token)).send({ reason: 'حساب فحص' });
+  }
+
   console.log(`\n${'='.repeat(58)}`);
   console.log(`  نجح: ${passed}    فشل: ${failed}`);
   if (failed) console.log(`  الفاشل: ${failures.join(' | ')}`);

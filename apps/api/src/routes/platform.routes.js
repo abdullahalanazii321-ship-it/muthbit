@@ -148,6 +148,42 @@ router.post('/admins/:userId/suspend', ownerOnly, async (req, res, next) => {
 });
 
 /**
+ * إعادة تفعيل مسؤول منصة موقوف — للمالك وحده، وبسبب مكتوب كالإيقاف.
+ *
+ * في المعاملة نفسها:
+ * - يُزاد session_version فيبطل كل رمز صدر قبل الإيقاف (الإيقاف يمنع بالحالة وحدها،
+ *   فلولا هذا لعاد كل رمز قديم صالحاً — ومنها رمز ربما سُرق وكان سبب الإيقاف).
+ * - تُسحب قراءة سجل الوصول إن كانت ممنوحة: يعود الحساب بلا صلاحية، ويمنحها المالك من جديد إن شاء.
+ * ويُقيَّد الاثنان في سجل الوصول: إعادة التفعيل بسببها، والسحب قيداً مستقلاً كأي سحب.
+ */
+router.post('/admins/:userId/activate', ownerOnly, async (req, res, next) => {
+  try {
+    const reason = requireReason(req.body && req.body.reason, 'إعادة التفعيل تحتاج سبباً مكتوباً.');
+    await db.transaction(async (trx) => {
+      const target = await platformAdmin(trx, req.params.userId);
+      if (target.is_platform_owner) throw forbidden('مالك المنصة لا يُوقَف ولا يُعاد تفعيله.');
+      if (target.status === 'active') throw conflict('الحساب نشط بالفعل.');
+      const revokeReader = target.can_read_access_log === true;
+      await trx('users')
+        .where({ id: target.id })
+        .update({
+          status: 'active',
+          can_read_access_log: false,
+          session_version: trx.raw('session_version + 1'),
+          updated_at: trx.fn.now()
+        });
+      await recordAccess(req, { action: 'activated.platform_admin', targetUserId: target.id, entityType: 'user', entityId: target.id, payload: { reason } }, trx);
+      if (revokeReader) {
+        await recordAccess(req, { action: 'revoked.access_log', targetUserId: target.id, entityType: 'user', entityId: target.id }, trx);
+      }
+    });
+    return res.json({ message: 'أُعيد تفعيل حساب المسؤول.' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
  * منح صلاحية قراءة سجل الوصول أو سحبها — للمالك وحده، ولمسؤول منصة غيره.
  * المالك يقرأ السجل دائماً فلا يُمنح ولا يُسحب منه. وكل منح وسحب يُقيَّد في السجل نفسه.
  */
