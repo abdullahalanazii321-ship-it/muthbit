@@ -1,8 +1,16 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- الوضع قبل أول رسم: داكن في الوسم نفسه (الافتراضي، ولو تعطّل JavaScript)، وهذا السطر يقرأ اختيار الزائر
+         فلا تومض الصفحة داكنةً ثم فاتحة. المفتاح نفسه في src/lib/theme.js — غيّرهما معاً.
+         لا يتبع إعداد النظام: الداكن هو البداية حتى يختار المستخدم غيره. -->
+    <script>
+      try {
+        if (localStorage.getItem("muthbit.theme") === "light") document.documentElement.setAttribute("data-theme", "light");
+      } catch (e) {}
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />

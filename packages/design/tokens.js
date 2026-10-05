@@ -8,10 +8,10 @@ const light = {
   ink: '#10201D',
   muted: '#5C6B66',
   line: '#D2D9D4',
-  lineStrong: '#B7C2BC',
+  lineStrong: '#77857F',
   seal: '#0B4F4A',
   sealSoft: '#DDE9E4',
-  signal: '#B2551B',
+  signal: '#A04A15',
   signalSoft: '#F0E3D8',
   logoAccent: '#12857A'
 };
@@ -23,7 +23,7 @@ const dark = {
   ink: '#E7EDE9',
   muted: '#94A39D',
   line: '#22302B',
-  lineStrong: '#33443E',
+  lineStrong: '#5E6F68',
   seal: '#54C3A8',
   sealSoft: '#16302A',
   signal: '#E19257',

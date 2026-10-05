@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
+import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
 import {
   DEFAULT_LANG,
   LANGS,
@@ -47,6 +48,10 @@ const COPY = {
     dir: 'rtl',
     brand: 'مثبت',
     toggle: { text: 'EN', label: 'English', lang: 'en' },
+    theme: {
+      light: { text: 'فاتح', label: 'التبديل إلى الوضع الفاتح' },
+      dark: { text: 'داكن', label: 'التبديل إلى الوضع الداكن' }
+    },
     nav: { label: 'أقسام الصفحة', signIn: 'تسجيل الدخول' },
     sections: { features: 'المميزات', parties: 'الأطراف', how: 'كيف تعمل' },
     hero: {
@@ -178,6 +183,10 @@ const COPY = {
     dir: 'ltr',
     brand: 'Muthbit',
     toggle: { text: 'ع', label: 'العربية', lang: 'ar' },
+    theme: {
+      light: { text: 'Light', label: 'Switch to light mode' },
+      dark: { text: 'Dark', label: 'Switch to dark mode' }
+    },
     nav: { label: 'Page sections', signIn: 'Sign in' },
     sections: { features: 'Features', parties: 'Who it serves', how: 'How it works' },
     meta: {
@@ -386,10 +395,12 @@ function SiteHeader() {
   const { t, toggle } = useLanding();
   return (
     <header className="border-b border-mkt-line">
-      <div className={`${container} flex items-center justify-between gap-6 py-4`}>
+      {/* فجوات أضيق على الجوال (هنا تحت ٧٦٨، وبين أزرار الشريط تحت ٧٢٠): مع زر الوضع لا يتّسع عرض ٣٦٠
+          لـ«تسجيل الدخول» على سطر واحد بالفجوات الأصلية. وفوقهما كما كانت حرفياً. */}
+      <div className={`${container} flex items-center justify-between gap-2 py-4 md:gap-6`}>
         <Brand />
-        <nav aria-label={t.nav.label} className="flex items-center gap-3 min-[720px]:gap-6">
-          {/* تحت 720 بكسل تختفي روابط الأقسام، ويبقى زرّا اللغة والدخول. */}
+        <nav aria-label={t.nav.label} className="flex items-center gap-2 min-[720px]:gap-6">
+          {/* تحت 720 بكسل تختفي روابط الأقسام، وتبقى أزرار اللغة والوضع والدخول. */}
           <ul className="hidden items-center gap-6 text-sm font-medium min-[720px]:flex">
             {SECTION_IDS.map((id) => (
               <li key={id}>
@@ -410,6 +421,8 @@ function SiteHeader() {
           >
             {t.toggle.text}
           </button>
+          {/* زر الوضع بجوار زر اللغة وبشكله ومقاسه نفسيهما — المكوّن نفسه في شاشات الباب الأمامي. */}
+          <PublicThemeToggle labels={t.theme} />
           <Link
             to="/login"
             className={`rounded border border-mkt-line-strong px-4 py-3 text-sm font-medium text-mkt-paper transition-colors hover:border-mkt-mint md:py-2 ${focusRing}`}

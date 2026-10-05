@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch, errorMessage } from '../lib/api.js';
 import { isPasswordValid, passwordMessage } from '../lib/passwordPolicy.js';
 import Logo from '../components/Logo.jsx';
+import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
@@ -224,15 +225,19 @@ export default function RegisterPage() {
   // فتبديل النوع لا يعيد تفعيل الزر.
   const [rateLimitMessage, setRateLimitMessage] = useState(null);
 
-  // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
+  // mb-entrance: الباب الأمامي يتبع الوضع المختار كصفحة التعريف — رموز المنصة بقيم --mb-mkt-* داخل هذه الشاشة وحدها (tokens.css).
   // break-words موروثة: رسائل 400 واسم المنشأة في «بانتظار التوثيق» بلا مسافة كانت تمدّ الصفحة أفقياً.
   return (
     <main className="mb-entrance flex min-h-screen items-center justify-center break-words bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة نفسها في شاشة الدخول: الرمز ثم الاسم تحته، و aria-hidden لأن الاسم مكتوب نصاً. */}
-        <div className="mb-6 flex flex-col items-start gap-2">
-          <Logo size={64} onDark aria-hidden="true" />
-          <span className="font-display text-xl font-semibold text-ink">مثبت</span>
+        {/* زر الوضع في صفّ القفلة، في الطرف المقابل لها (يسار البطاقة في RTL) — مكانه في كل شاشات الباب الأمامي. */}
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="flex flex-col items-start gap-2">
+            <Logo size={64} onDark aria-hidden="true" />
+            <span className="font-display text-xl font-semibold text-ink">مثبت</span>
+          </div>
+          <PublicThemeToggle />
         </div>
 
         {result ? (

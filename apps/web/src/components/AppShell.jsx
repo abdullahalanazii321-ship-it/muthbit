@@ -11,7 +11,9 @@ import {
   homeFor
 } from '../lib/access.js';
 import { roleLabel } from '../lib/labels.js';
+import { useTheme } from '../lib/theme.js';
 import Logo from './Logo.jsx';
+import ThemeIcon from './ThemeIcon.jsx';
 
 // الحلقة نعناعية لا بلون الختم: أرضية القائمة هي الختم نفسه في الفاتح، فحلقة الختم لا تُرى عليها.
 const navFocus = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nav-accent';
@@ -115,7 +117,8 @@ export default function AppShell({ title, titleAs: TitleTag = 'h1', action, chil
 }
 
 /** القفلة الأفقية: الرمز ثم الاسم. aria-hidden على الرمز لأن «مثبت» مكتوبة بجانبه — وإلا نُطقت مرتين.
-    onDark: جسم الشعار بلون الختم لا يُرى على أرضية القائمة، فالنسخة الأحادية النعناعية بدله. */
+    أرضية القائمة داكنة في الوضعين، فالنسخة الأحادية بنعناعي القائمة (--mb-nav-accent) — لا onDark:
+    ذاك يتبع الوضع فيصير بلون الختم في الفاتح، والختم لا يُرى على أرضية بلون الختم. */
 function BrandLink({ to, onNavigate }) {
   return (
     <Link
@@ -123,7 +126,7 @@ function BrandLink({ to, onNavigate }) {
       onClick={onNavigate}
       className={`inline-flex min-h-11 items-center gap-2 rounded-sm font-display text-lg font-semibold text-nav-ink ${navFocus}`}
     >
-      <Logo size={28} onDark aria-hidden="true" />
+      <Logo size={28} body="var(--mb-nav-accent)" accent="var(--mb-nav-accent)" aria-hidden="true" />
       مثبت
     </Link>
   );
@@ -162,6 +165,7 @@ function NavLinks({ user, pathname, onNavigate, className = '' }) {
 function UserBlock({ user, onSignOut }) {
   return (
     <div className="flex flex-col gap-3">
+      <ThemeToggle />
       <div className="min-w-0 break-words px-1">
         {user.fullName && <p className="text-sm font-medium text-nav-ink">{user.fullName}</p>}
         <p className="text-xs text-nav-muted">{roleLabel(user.role)}</p>
@@ -174,6 +178,24 @@ function UserBlock({ user, onSignOut }) {
         تسجيل الخروج
       </button>
     </div>
+  );
+}
+
+/** زر الوضع فوق بطاقة المستخدم — في القائمة الجانبية وفي القائمة المنسدلة على الجوال.
+    النص وجهة التبديل (كزر اللغة في صفحة التعريف)، و aria-label الجملة كاملة وفيها النص الظاهر. */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const to = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={to === 'light' ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الداكن'}
+      className={`flex min-h-11 w-full items-center gap-2 rounded-sm px-4 text-sm text-nav-muted hover:bg-nav-hover hover:text-nav-ink ${navFocus}`}
+    >
+      <ThemeIcon to={to} />
+      {to === 'light' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+    </button>
   );
 }
 

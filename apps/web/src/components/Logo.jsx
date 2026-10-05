@@ -1,20 +1,22 @@
 // شعار مثبت — الرمز فقط (مسارات مفرّغة، لا يعتمد على أي خط)
 // الاستخدام:  <Logo size={32} />                     الألوان الافتراضية من الهوية
-//             <Logo size={32} onDark />              على الأرضية الداكنة للصفحة العامة
+//             <Logo size={32} onDark />              على أرضية الصفحة العامة والباب الأمامي (تتبع الوضع)
 //             <Logo size={32} body="currentColor" accent="currentColor" />   نسخة أحادية
 //
 // اللونان يأتيان من packages/design لا كقيمتين حرفيتين: القاعدة في CLAUDE.md أن أي
 // #RRGGBB داخل apps/web خطأ.
 // الجسم يقرأ --mb-seal بعد توحيد لون الختم على لون الشعار.
-// onDark: لون الختم لا يُرى على --mb-mkt-ground، فالنسخة الأحادية بالنعناعي بدله.
+// onDark: على أرضية الصفحة العامة (--mb-mkt-ground). رمزا --mb-mkt-logo-* يتبعان الوضع المختار:
+// في الداكن النسخة الأحادية النعناعية (لون الختم لا يُرى على الداكن)، وفي الفاتح اللونان المعتمدان.
 // body و accent الصريحان يغلبان onDark، والسلوك بلا أيٍّ منها كما كان تماماً.
 // المسارات أدناه كما وردت من حزمة الهوية — لا تُمسّ.
 
-const ON_DARK = 'var(--mb-mkt-mint)';
+const ON_DARK_BODY = 'var(--mb-mkt-logo-body)';
+const ON_DARK_ACCENT = 'var(--mb-mkt-logo-accent)';
 
 export default function Logo({ size = 32, onDark = false, body, accent, title = 'مثبت', ...rest }) {
-  const bodyColor = body ?? (onDark ? ON_DARK : 'var(--mb-seal)');
-  const accentColor = accent ?? (onDark ? ON_DARK : 'var(--mb-logo-accent)');
+  const bodyColor = body ?? (onDark ? ON_DARK_BODY : 'var(--mb-seal)');
+  const accentColor = accent ?? (onDark ? ON_DARK_ACCENT : 'var(--mb-logo-accent)');
   return (
     <svg
       width={size}

@@ -4,6 +4,7 @@ import { apiFetch, errorMessage } from '../lib/api.js';
 import { normalizeUser, useSession } from '../lib/session.js';
 import { homeFor } from '../lib/access.js';
 import Logo from '../components/Logo.jsx';
+import PublicThemeToggle from '../components/PublicThemeToggle.jsx';
 import Field from '../components/Field.jsx';
 import Button from '../components/Button.jsx';
 import Alert from '../components/Alert.jsx';
@@ -83,16 +84,20 @@ export default function LoginPage() {
     }
   }
 
-  // mb-entrance: الباب الأمامي داكن كصفحة التعريف — رموز المنصة بقيم داكنة داخل هذه الشاشة وحدها (tokens.css).
+  // mb-entrance: الباب الأمامي يتبع الوضع المختار كصفحة التعريف — رموز المنصة بقيم --mb-mkt-* داخل هذه الشاشة وحدها (tokens.css).
   // break-words موروثة: رسالة خادم طويلة بلا مسافة كانت تمدّ الصفحة إلى ١١٠٩ بكسل على شاشة ٣٦٠.
   return (
     <main className="mb-entrance flex min-h-screen items-center justify-center break-words bg-ground px-4 py-12">
       <div className="w-full max-w-measure rounded border border-line bg-surface p-6 sm:p-8">
         {/* القفلة الرأسية: الرمز ثم الاسم تحته.
             aria-hidden على الرمز لأن الاسم مكتوب تحته نصاً مرئياً، وبدونها يُنطق «مثبت» مرتين. */}
-        <div className="mb-6 flex flex-col items-start gap-2">
-          <Logo size={64} onDark aria-hidden="true" />
-          <span className="font-display text-xl font-semibold text-ink">مثبت</span>
+        {/* زر الوضع في صفّ القفلة، في الطرف المقابل لها (يسار البطاقة في RTL) — مكانه في كل شاشات الباب الأمامي. */}
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="flex flex-col items-start gap-2">
+            <Logo size={64} onDark aria-hidden="true" />
+            <span className="font-display text-xl font-semibold text-ink">مثبت</span>
+          </div>
+          <PublicThemeToggle />
         </div>
         <h1 className="font-display text-2xl font-semibold text-ink">تسجيل الدخول</h1>
         {/* بعد إعادة تعيين كلمة المرور: رسالة الخادم كما وصلت. */}
