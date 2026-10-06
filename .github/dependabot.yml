@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # حزم npm للمستودع كله (workspaces بقفل واحد في الجذر).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 5
+    # ترقيات الإصلاح والميزات الصغيرة في طلب دمج واحد، فلا تتكدّس خمسة طلبات على تغيير واحد.
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: 'حزم'
+
+  # إجراءات GitHub نفسها: actions/checkout و actions/setup-node لها ثغرات وترقيات أيضاً.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'إجراءات'

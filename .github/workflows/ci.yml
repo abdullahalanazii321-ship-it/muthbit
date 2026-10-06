@@ -57,6 +57,13 @@ jobs:
       - name: تثبيت الاعتماديات
         run: npm ci
 
+      - name: فحص ثغرات الحزم
+        # يسقط الفحص على high و critical وحدهما. moderate وأقل تظهر في السجل ولا توقف النشر،
+        # وإلا صار الفحص ضجيجاً يُتجاوَز بالعادة لا بالقرار.
+        # --omit=dev: اعتماديات الإنتاج وحدها (ما يصل الخادم والمتصفح). سلسلة tailwindcss 3 للبناء
+        # فيها high لا يُصلح إلا بالترقية إلى tailwindcss 4 — حين تتم، تُحذف هذه الراية.
+        run: npm audit --omit=dev --audit-level=high
+
       - name: إنشاء الجداول
         run: npm run api:migrate
 
