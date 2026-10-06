@@ -90,8 +90,23 @@ function init() {
     // لا قياس أداء ولا تسجيل جلسات ولا أي رصد للمستخدمين — الأخطاء وحدها.
     tracesSampleRate: 0,
     profilesSampleRate: 0,
-    // لا عناوين IP ولا هويات مستخدمين ولا أي بيانات شخصية افتراضية.
-    sendDefaultPii: false,
+    // لا هويات ولا كوكيز ولا رؤوس ولا أجسام ولا استعلامات ولا بيانات قاعدة — منع عند المصدر.
+    // dataCollection لا sendDefaultPii: الإصدار 11 حذف sendDefaultPii، والإصدار 10.74 يقبل الاثنين
+    // ويقدّم dataCollection متى ضُبط. وفي الاثنين كل حقل لا يُذكر هنا يُجمع افتراضياً،
+    // فكل حقل مذكور ومطفأ صراحةً. والرؤوس بصيغة { request, response } لا false مجرّدة:
+    // الإصدار 10 لا يقرأ إلا هذين المفتاحين، فقيمة false وحدها تفتحها فيه.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: { request: false, response: false },
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false
+    },
     initialScope: { tags: { service: 'muthbit-api', node_env: env.env } },
     beforeSend,
     // فتات التتبّع تُحذف في beforeSend أيضاً، وهذا منع ثانٍ عند المصدر.
