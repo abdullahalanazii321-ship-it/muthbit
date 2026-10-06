@@ -9,7 +9,15 @@ const trackingOn = sentry.init();
 
 const app = createApp();
 
-const server = app.listen(env.port, () => {
+const server = app.listen(env.port, (err) => {
+  // express 5 يمرّر خطأ الربط (EADDRINUSE…) إلى هذه الدالة بدل أن يُسقط العملية:
+  // بلا هذا الفحص يُطبع «تعمل» والخادم لم يقلع، وتخرج العملية بالرمز 0.
+  // في express 4 لا يصل الخطأ هنا أصلاً، فيبقى السقوط بالرمز 1 كما كان.
+  if (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[مثبت] تعذّر تشغيل الخادم على المنفذ ${env.port}: ${err.code || err.message}`);
+    process.exit(1);
+  }
   // eslint-disable-next-line no-console
   console.log(`[مثبت] الواجهة البرمجية تعمل على المنفذ ${env.port} — البيئة: ${env.env}`);
   // يُطبع عند التفعيل فقط: غياب التتبّع حالة طبيعية لا تستحق سطراً ولا تحذيراً.
