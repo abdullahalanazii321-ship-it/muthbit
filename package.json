@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "منصة مثبت — منصة مشتريات موثّقة للشركات",
   "workspaces": ["apps/*", "packages/*"],
-  "engines": { "node": ">=20" },
+  "engines": { "node": "24.x" },
   "scripts": {
     "api:dev": "npm run dev --workspace @muthbit/api",
     "api:migrate": "npm run migrate --workspace @muthbit/api",

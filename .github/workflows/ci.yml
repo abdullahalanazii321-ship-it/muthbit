@@ -48,10 +48,13 @@ jobs:
       - name: جلب الشيفرة
         uses: actions/checkout@v7
 
-      - name: تهيئة Node 20
+      - name: تهيئة Node 24
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          # مثبّت عمداً كما ubuntu-24.04: خط رئيسي واحد يأخذ تحديثاته الأمنية ولا ينتقل وحده إلى غيره.
+          # يطابق .node-version في الجذر (يقرؤه Render للخدمتين) و engines في package.json —
+          # والثلاثة تتغيّر معاً في التزام واحد.
+          node-version: '24'
           cache: npm
 
       - name: تثبيت الاعتماديات

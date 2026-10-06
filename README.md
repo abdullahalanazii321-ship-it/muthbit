@@ -24,7 +24,7 @@
 ## التشغيل محلياً
 
 ```bash
-# 1) المتطلبات: Node 20+ و PostgreSQL 16
+# 1) المتطلبات: Node 24 (`.node-version`) و PostgreSQL 16
 createdb muthbit_dev
 
 # 2) الاعتماديات
